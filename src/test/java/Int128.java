@@ -790,7 +790,8 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         for (int i = 63; i >= 0; i--) {
             long bit = (aLo >>> i) & 1L;
             long r2 = (r << 1) | bit;
-            if (Long.compareUnsigned(r2, v) >= 0) {
+            // Handle overflow: if r >= 2^63, then r*2 overflows, and r*2 >= 2^64 > v
+            if (r < 0L || Long.compareUnsigned(r2, v) >= 0) {
                 r = r2 - v;
                 qLo |= (1L << i);
             } else {
@@ -870,12 +871,13 @@ public final class Int128 implements Comparable<Int128>, Serializable {
             }
         }
 
-        // Now q < 2^64. Apply standard Knuth corrections (while q*d0 > rhat*B and rhat < B).
+        // Now q < 2^64. Apply standard Knuth corrections (while q*d0 > rhat*B + n0 and rhat < B).
         // At most 2 iterations needed per Knuth's theorem.
         for (int corrections = 0; corrections < 2; corrections++) {
             long[] qd0 = mul64to128(q, d0);
+            // Compare qd0 (hi:lo) against (rhat:n0) - this is the critical fix
             boolean needsCorrection = (Long.compareUnsigned(qd0[0], rhat) > 0) ||
-                                      (qd0[0] == rhat && Long.compareUnsigned(qd0[1], 0L) > 0);
+                                      (qd0[0] == rhat && Long.compareUnsigned(qd0[1], n0) > 0);
             if (!needsCorrection) {
                 break;
             }
@@ -898,7 +900,8 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         long rHi = n2 - qD[0] - borrow2;
 
         // If subtraction underflowed from the top limb, fix by adding D back and decrementing q.
-        boolean under = (rHi < 0) || (n2 < qD[0]) || (n2 == qD[0] && borrow2 != 0);
+        // After 3-limb subtraction in two's complement, rHi < 0 is sufficient to detect underflow
+        boolean under = (rHi < 0);
 
         if (under) {
             // r += D  (normalised), adding to the lower 2 limbs
