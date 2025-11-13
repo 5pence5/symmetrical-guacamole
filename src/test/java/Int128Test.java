@@ -696,7 +696,7 @@ public class Int128Test {
             Int128[] qr = a.divRem(d);
             // Verify identity: a = q*d + r
             Int128 recomposed = qr[0].mul(d).add(qr[1]);
-            return recomposed.equals(a) && qr[1].compareUnsigned(d) < 0;
+            return recomposed.equals(a) && qr[1].abs().compareTo(d.abs()) < 0;
         });
 
         // Test multiplication corner cases
