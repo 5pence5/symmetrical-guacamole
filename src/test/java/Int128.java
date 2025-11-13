@@ -875,7 +875,7 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         for (int corrections = 0; corrections < 2; corrections++) {
             long[] qd0 = mul64to128(q, d0);
             boolean needsCorrection = (Long.compareUnsigned(qd0[0], rhat) > 0) ||
-                                      (qd0[0] == rhat && Long.compareUnsigned(qd0[1], 0L) > 0);
+                                      (qd0[0] == rhat && Long.compareUnsigned(qd0[1], n0) > 0);
             if (!needsCorrection) {
                 break;
             }
@@ -898,7 +898,7 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         long rHi = n2 - qD[0] - borrow2;
 
         // If subtraction underflowed from the top limb, fix by adding D back and decrementing q.
-        boolean under = (rHi < 0) || (n2 < qD[0]) || (n2 == qD[0] && borrow2 != 0);
+        boolean under = (rHi < 0);
 
         if (under) {
             // r += D  (normalised), adding to the lower 2 limbs
