@@ -835,54 +835,53 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         final long d1 = (s == 0) ? bHi : (bHi << s) | (bLo >>> (64 - s));
         final long d0 = (s == 0) ? bLo : (bLo << s);
 
-        final long n1 = (s == 0) ? aHi : (aHi << s) | (aLo >>> (64 - s));
-        final long n0 = (s == 0) ? aLo : (aLo << s);
+        long n2 = (s == 0) ? 0L : (aHi >>> (64 - s));
+        long n1 = (s == 0) ? aHi : (aHi << s) | (aLo >>> (64 - s));
+        long n0 = (s == 0) ? aLo : (aLo << s);
 
-        // Trial quotient q̂ = floor((n1*B + n0) / d1)  (B = 2^64). Clamp to 2^64-1.
-        // We compute via a 128/64 → qLo + remainder on the fly.
-        long qHi_est = Long.divideUnsigned(n1, d1);
-        long rem1    = Long.remainderUnsigned(n1, d1);
+        // Trial quotient q̂ = floor((n2*B + n1) / d1)  (B = 2^64).
+        BigInteger numHi = toUnsignedBigInteger(n2).shiftLeft(64)
+                .add(toUnsignedBigInteger(n1));
+        BigInteger denHi = toUnsignedBigInteger(d1);
+        BigInteger[] qrEst = numHi.divideAndRemainder(denHi);
+        long q       = qrEst[0].longValue();
+        long rhat    = qrEst[1].longValue(); // remainder w.r.t. d1
 
-        // Divide (rem1<<64 | n0) by d1 to finish 128/64; gives qLo_est and r̂.
-        long[] ql_r  = udivrem_96by64_bitloop(rem1, n0, d1); // [qLo_est, r̂]
-        long q       = (qHi_est == 0L) ? ql_r[0] : 0xFFFF_FFFF_FFFF_FFFFL;
-        long rhat    = ql_r[1]; // remainder w.r.t. d1
-
-        // Correction step(s): while q*d0 > r̂*B (here u_{-1} = 0 since we have only two limbs)
+        // Correction step(s): while q*d0 > r̂*B + n0
         long[] qd0 = mul64to128(q, d0); // q * d0 -> [hi, lo] = 128-bit
-        // Compare (qd0_hi:qd0_lo) > (rhat:0)
-        if (Long.compareUnsigned(qd0[0], rhat) > 0 ||
-            (qd0[0] == rhat && Long.compareUnsigned(qd0[1], 0L) > 0)) {
+        while (Long.compareUnsigned(qd0[0], rhat) > 0 ||
+               (qd0[0] == rhat && Long.compareUnsigned(qd0[1], n0) > 0)) {
             q--;
-            rhat = rhat + d1; // unsigned add; overflow is fine
-            qd0  = mul64to128(q, d0);
-            if (Long.compareUnsigned(qd0[0], rhat) > 0 ||
-                (qd0[0] == rhat && Long.compareUnsigned(qd0[1], 0L) > 0)) {
-                q--;
-                rhat = rhat + d1; // second (and last) possible correction
+            long prevRhat = rhat;
+            rhat = rhat + d1; // unsigned add; overflow indicates rhat >= B
+            if (Long.compareUnsigned(rhat, prevRhat) < 0) {
+                break; // rhat wrapped: stop correcting
             }
+            qd0 = mul64to128(q, d0);
         }
 
         // Now subtract q * D from the normalised numerator.
         long[] qD = mul128by64to192(d1, d0, q); // [top, hi, lo]
-        // rN = (n1:n0) - qD (128-bit subtract)
+        // rN = (n2:n1:n0) - qD (192-bit subtract truncated to 128 bits)
         long rLo = n0 - qD[2];
         long borrow = Long.compareUnsigned(n0, qD[2]) < 0 ? 1L : 0L;
         long rHi = n1 - qD[1] - borrow;
+        boolean borrowHi = Long.compareUnsigned(n1, qD[1]) < 0 ||
+                (borrow != 0L && Long.compareUnsigned(n1, qD[1]) == 0);
+        long rTop = n2 - qD[0] - (borrowHi ? 1L : 0L);
 
         // If subtraction underflowed (or product overflowed to 'top'), fix by adding D back and decrementing q.
-        boolean under =
-                (qD[0] != 0L) ||
-                (Long.compareUnsigned(n1, qD[1]) < 0) ||
-                (n1 == qD[1] && borrow != 0L);
+        boolean under = (rTop != 0L);
 
         if (under) {
             // r += D  (normalised)
             long rLo2 = rLo + d0;
             long carry = Long.compareUnsigned(rLo2, rLo) < 0 ? 1L : 0L;
             long rHi2 = rHi + d1 + carry;
+            carry = Long.compareUnsigned(rHi2, rHi) < 0 ? 1L : 0L;
             rLo = rLo2;
             rHi = rHi2;
+            rTop = (rTop + carry); // becomes zero
             q--; // one-step correction is sufficient
         }
 
@@ -909,6 +908,18 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         long carry = Long.compareUnsigned(hi, mid) < 0 ? 1L : 0L;
         long top = p1[0] + carry;
         return new long[] { top, hi, lo };
+    }
+
+    private static BigInteger toUnsignedBigInteger(long x) {
+        if (x >= 0) {
+            return BigInteger.valueOf(x);
+        }
+        byte[] bytes = new byte[8];
+        for (int i = 7; i >= 0; i--) {
+            bytes[i] = (byte) (x & 0xFF);
+            x >>>= 8;
+        }
+        return new BigInteger(1, bytes);
     }
 
     // =========================================================================

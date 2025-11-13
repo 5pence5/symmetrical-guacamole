@@ -444,6 +444,14 @@ public class Int128Test {
             // Should be (2^128 - 1) / 2 = 2^127 - 1 (approximately)
             return q.isPositive();
         });
+
+        test("Regression: normalised same-degree quotient fits in one limb", () -> {
+            Int128 a = Int128.of(0xFFFF_0000_0000_0000L, 0xFFFF_0000_0000_0000L);
+            Int128 d = Int128.of(0x0000_FFFF_0000_0000L, 0xFFFF_FFFF_0000_0001L);
+            Int128 q = a.divideUnsigned(d);
+            Int128 r = a.remainderUnsigned(d);
+            return q.equals(Int128.valueOf(0xFFFF)) && q.mul(d).add(r).equals(a);
+        });
     }
 
     private static void testStringConversion() {
@@ -693,10 +701,11 @@ public class Int128Test {
         test("128/128 division path", () -> {
             Int128 a = Int128.parseHex("0xFFFF000000000000FFFF000000000000");
             Int128 d = Int128.parseHex("0x0000FFFF00000000FFFFFFFF00000001");
-            Int128[] qr = a.divRem(d);
-            // Verify identity: a = q*d + r
-            Int128 recomposed = qr[0].mul(d).add(qr[1]);
-            return recomposed.equals(a) && qr[1].compareUnsigned(d) < 0;
+            Int128 q = a.divideUnsigned(d);
+            Int128 r = a.remainderUnsigned(d);
+            // Verify identity: a = q*d + r (unsigned) and remainder magnitude < divisor
+            Int128 recomposed = q.mul(d).add(r);
+            return recomposed.equals(a) && r.compareUnsigned(d) < 0;
         });
 
         // Test multiplication corner cases
