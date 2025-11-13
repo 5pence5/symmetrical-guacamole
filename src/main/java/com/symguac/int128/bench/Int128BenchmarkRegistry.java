@@ -1,6 +1,7 @@
 package com.symguac.int128.bench;
 
 import com.symguac.int128.api.Int128Arithmetic;
+import com.symguac.int128.impl.highperf.FastInt128Arithmetic;
 import com.symguac.int128.impl.twolongs.TwoLongsBaselineArithmetic;
 
 import java.util.Collections;
@@ -18,6 +19,7 @@ public final class Int128BenchmarkRegistry {
 
     static {
         register(Int128ImplementationIds.TWO_LONGS_BASELINE, TwoLongsBaselineArithmetic::new);
+        register(Int128ImplementationIds.FAST_LIMB_BASED, FastInt128Arithmetic::new);
     }
 
     private Int128BenchmarkRegistry() {
