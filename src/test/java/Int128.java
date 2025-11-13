@@ -648,8 +648,8 @@ public final class Int128 implements Comparable<Int128>, Serializable {
 
     /** Exact narrowing to long; throws if out of range. */
     public long toLongExact() {
-        if (hi == 0L) return lo;
-        if (hi == -1L && (lo & SIGN_BIT_64) != 0) return lo;
+        boolean loSign = (lo & SIGN_BIT_64) != 0;
+        if ((!loSign && hi == 0L) || (loSign && hi == -1L)) return lo;
         throw new ArithmeticException("Out of long range: " + this);
     }
 
@@ -950,7 +950,8 @@ public final class Int128 implements Comparable<Int128>, Serializable {
 
     /** Fits exactly in signed 64‑bit. */
     public boolean fitsInLong() {
-        return hi == 0L || (hi == -1L && (lo & SIGN_BIT_64) != 0);
+        boolean loSign = (lo & SIGN_BIT_64) != 0;
+        return loSign ? (hi == -1L) : (hi == 0L);
     }
 
     /** Fits in unsigned 64‑bit. */
@@ -990,13 +991,14 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         Int128 q = MIN_VALUE.div(Int128.valueOf(-1)); // wrap semantics in 128‑bit ring
         if (!q.equals(MIN_VALUE))                     throw new AssertionError("MIN/-1 wrap");
         if (!parseHex("-0x1").equals(Int128.valueOf(-1))) throw new AssertionError("parseHex -0x1");
-        // NOTE: Specific 128/128 test case commented out pending further investigation
-        // The old implementation hangs on this case; new implementation completes but needs verification
-        // Int128 a = parseHex("0xFFFF000000000000FFFF000000000000");
-        // Int128 d = parseHex("0x0000FFFF00000000FFFFFFFF00000001");
-        // Int128[] dr = a.divRem(d);
-        // Int128 recomposed = dr[0].mul(d).add(dr[1]);
-        // if (!recomposed.equals(a)) throw new AssertionError("a = q*d + r identity");
+        // Critical 128/128 division edge case (previously caused infinite loop - now fixed)
+        Int128 a = parseHex("0xFFFF000000000000FFFF000000000000");
+        Int128 d = parseHex("0x0000FFFF00000000FFFFFFFF00000001");
+        Int128[] dr = a.divRem(d);
+        Int128 recomposed = dr[0].mul(d).add(dr[1]);
+        if (!recomposed.equals(a)) throw new AssertionError("a = q*d + r identity");
+        // Verify Euclidean property: |remainder| < |divisor|
+        if (dr[1].abs().compareUnsigned(d.abs()) >= 0) throw new AssertionError("|r| >= |d|");
     }
 
     // =========================================================================

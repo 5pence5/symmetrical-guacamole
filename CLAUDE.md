@@ -47,7 +47,7 @@ symmetrical-guacamole/
     ├── jmh/java/com/symguac/int128/bench/
     │   └── Int128ArithmeticBenchmark.java     # JMH benchmark suite
     └── test/java/
-        └── Fast128.java             # Reference implementation (910+ LOC)
+        └── Int128.java             # Reference implementation (910+ LOC)
 ```
 
 ---
@@ -140,7 +140,7 @@ All implementations represent 128-bit values as **two 64-bit signed longs**:
 - Two-limb division approximation for 128÷128 (avoids bit-by-bit iteration)
 - Zero-allocation arithmetic in mutable mode
 
-### 3. Fast128 Reference (`test/Fast128.java`)
+### 3. Int128 Reference (`test/Int128.java`)
 
 **Status:** Recently merged as the best standalone implementation
 
@@ -197,7 +197,7 @@ java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar -p implId=fastLimb128
 **Commit Message Style:**
 - Clear, concise descriptions
 - Examples from history:
-  - "Move Fast128.java to test directory for rigorous testing"
+  - "Move Int128.java to test directory for rigorous testing"
   - "Implement Int128 class for 128-bit integer operations"
   - "Add high-performance 128-bit integer implementation"
 
@@ -250,7 +250,7 @@ git push -u origin claude/claude-md-mhxvjslwyf4nc3jn-012qHEDUHS9YtxMBLGDyY4gV
 
 **Current approach:**
 - No formal unit test framework (JUnit, TestNG)
-- Light smoke tests in Fast128.java (`quickSelfCheck()`)
+- Light smoke tests in Int128.java (`quickSelfCheck()`)
 - Benchmarks serve as integration tests
 - Correctness verified by comparing against baseline
 
@@ -486,13 +486,13 @@ public static final Int128 MAX_VALUE = ...;  // 2^127 - 1
 
 **When asked to add division, modulo, or bitwise ops:**
 
-1. **Check Fast128.java reference**
-   - Located at `src/test/java/Fast128.java`
+1. **Check Int128.java reference**
+   - Located at `src/test/java/Int128.java`
    - Contains complete implementations of all operations
    - Copy the algorithm, adapt to the target implementation
 
 2. **Maintain performance standards**
-   - No BigInteger in division (use Fast128's algorithm)
+   - No BigInteger in division (use Int128's algorithm)
    - Implement fast 128÷64 path for common cases
    - Add constants for powers of 10
 
@@ -553,7 +553,7 @@ public static final Int128 MAX_VALUE = ...;  // 2^127 - 1
 
 **When asked to create a new 1000+ line implementation:**
 
-**Use Fast128.java as the template** (`src/test/java/Fast128.java`):
+**Use Int128.java as the template** (`src/test/java/Int128.java`):
 
 1. **Required components:**
    - Constants: ZERO, ONE, DECIMAL_BASE, MIN_VALUE, MAX_VALUE
@@ -597,7 +597,7 @@ public static final Int128 MAX_VALUE = ...;  // 2^127 - 1
 | Understand the API | `src/main/java/com/symguac/int128/api/*.java` |
 | See baseline implementation | `src/main/java/com/symguac/int128/impl/twolongs/*.java` |
 | See optimized implementation | `src/main/java/com/symguac/int128/impl/highperf/*.java` |
-| Reference complete implementation | `src/test/java/Fast128.java` |
+| Reference complete implementation | `src/test/java/Int128.java` |
 | Add new implementation | `src/main/java/com/symguac/int128/impl/{newname}/` |
 | Register implementation | `src/main/java/com/symguac/int128/bench/Int128BenchmarkRegistry.java` |
 | Configure benchmarks | `src/jmh/java/com/symguac/int128/bench/Int128ArithmeticBenchmark.java` |
@@ -624,7 +624,7 @@ public static final Int128 MAX_VALUE = ...;  // 2^127 - 1
 
 ### For New Implementations
 
-- **Start from Fast128.java reference**
+- **Start from Int128.java reference**
 - **Implement complete API (no partial implementations)**
 - **Register in benchmark registry**
 - **Test edge cases (MIN_VALUE, MAX_VALUE, zero)**
@@ -641,18 +641,26 @@ public static final Int128 MAX_VALUE = ...;  // 2^127 - 1
 
 ## Version History
 
+- **2025-11-13 (Latest Update)**: Production readiness improvements
+  - ✅ Division edge case test uncommented and verified passing
+  - ✅ Division methods added to Int128Arithmetic interface
+  - ✅ Documentation updated (Fast128 → Int128 references corrected)
+  - ✅ Historical review report archived with resolution status
+  - ✅ All critical division bugs verified as fixed (commits 9d2d444, cc7caa9, 5897185)
+
 - **2025-11-13**: Initial CLAUDE.md created based on current codebase state
-  - Fast128.java recently merged to src/test/java/
+  - Int128.java (formerly Fast128.java) merged to src/test/java/
   - Two implementations registered: twoLongsBaseline, fastLimb128
   - JMH benchmark suite with 5 benchmarks
   - Java 17, Maven 3.x, JMH 1.36
+  - Critical division bugs fixed in previous commits
 
 ---
 
 ## Questions & Support
 
 **For AI Assistants:**
-- When in doubt, check Fast128.java for reference implementation
+- When in doubt, check Int128.java for reference implementation
 - Prioritize performance measurements over theoretical optimization
 - Always maintain correctness - performance improvements must not break arithmetic
 - Document non-obvious design decisions

@@ -389,7 +389,8 @@ public class Int128Test {
             Int128 d = Int128.valueOf(67);
             Int128[] qr = a.divRem(d);
             Int128 recomposed = qr[0].mul(d).add(qr[1]);
-            return recomposed.equals(a);
+            // Verify identity and Euclidean property: |r| < |d|
+            return recomposed.equals(a) && qr[1].abs().compareUnsigned(d.abs()) < 0;
         });
 
         test("Division by 1", () -> {
@@ -567,6 +568,23 @@ public class Int128Test {
             return !Int128.of(1, 0).fitsInLong();
         });
 
+        test("fitsInLong: 2^63 should not fit", () -> {
+            // 2^63 = 0x8000_0000_0000_0000 is outside signed long range
+            return !Int128.of(0L, 0x8000_0000_0000_0000L).fitsInLong();
+        });
+
+        test("fitsInLong: Long.MAX_VALUE should fit", () -> {
+            return Int128.of(0L, 0x7FFF_FFFF_FFFF_FFFFL).fitsInLong();
+        });
+
+        test("fitsInLong: Long.MIN_VALUE should fit", () -> {
+            return Int128.of(-1L, 0x8000_0000_0000_0000L).fitsInLong();
+        });
+
+        test("fitsInLong: -2^63-1 should not fit", () -> {
+            return !Int128.of(-1L, 0x7FFF_FFFF_FFFF_FFFFL).fitsInLong();
+        });
+
         test("toLongExact throws when out of range", () -> {
             try {
                 Int128.of(1, 0).toLongExact();
@@ -574,6 +592,25 @@ public class Int128Test {
             } catch (ArithmeticException e) {
                 return true;
             }
+        });
+
+        test("toLongExact: 2^63 should throw", () -> {
+            try {
+                Int128.of(0L, 0x8000_0000_0000_0000L).toLongExact();
+                return false;
+            } catch (ArithmeticException e) {
+                return true;
+            }
+        });
+
+        test("toLongExact: Long.MAX_VALUE works", () -> {
+            long val = Int128.of(0L, 0x7FFF_FFFF_FFFF_FFFFL).toLongExact();
+            return val == Long.MAX_VALUE;
+        });
+
+        test("toLongExact: Long.MIN_VALUE works", () -> {
+            long val = Int128.of(-1L, 0x8000_0000_0000_0000L).toLongExact();
+            return val == Long.MIN_VALUE;
         });
     }
 
@@ -694,9 +731,9 @@ public class Int128Test {
             Int128 a = Int128.parseHex("0xFFFF000000000000FFFF000000000000");
             Int128 d = Int128.parseHex("0x0000FFFF00000000FFFFFFFF00000001");
             Int128[] qr = a.divRem(d);
-            // Verify identity: a = q*d + r
+            // Verify identity: a = q*d + r and Euclidean property: |r| < |d|
             Int128 recomposed = qr[0].mul(d).add(qr[1]);
-            return recomposed.equals(a) && qr[1].compareUnsigned(d) < 0;
+            return recomposed.equals(a) && qr[1].abs().compareUnsigned(d.abs()) < 0;
         });
 
         // Test multiplication corner cases
