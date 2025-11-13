@@ -996,6 +996,8 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         Int128[] dr = a.divRem(d);
         Int128 recomposed = dr[0].mul(d).add(dr[1]);
         if (!recomposed.equals(a)) throw new AssertionError("a = q*d + r identity");
+        // Verify Euclidean property: |remainder| < |divisor|
+        if (dr[1].abs().compareUnsigned(d.abs()) >= 0) throw new AssertionError("|r| >= |d|");
     }
 
     // =========================================================================

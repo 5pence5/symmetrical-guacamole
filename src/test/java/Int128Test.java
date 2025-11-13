@@ -389,7 +389,8 @@ public class Int128Test {
             Int128 d = Int128.valueOf(67);
             Int128[] qr = a.divRem(d);
             Int128 recomposed = qr[0].mul(d).add(qr[1]);
-            return recomposed.equals(a);
+            // Verify identity and Euclidean property: |r| < |d|
+            return recomposed.equals(a) && qr[1].abs().compareUnsigned(d.abs()) < 0;
         });
 
         test("Division by 1", () -> {
@@ -694,9 +695,9 @@ public class Int128Test {
             Int128 a = Int128.parseHex("0xFFFF000000000000FFFF000000000000");
             Int128 d = Int128.parseHex("0x0000FFFF00000000FFFFFFFF00000001");
             Int128[] qr = a.divRem(d);
-            // Verify identity: a = q*d + r
+            // Verify identity: a = q*d + r and Euclidean property: |r| < |d|
             Int128 recomposed = qr[0].mul(d).add(qr[1]);
-            return recomposed.equals(a) && qr[1].compareUnsigned(d) < 0;
+            return recomposed.equals(a) && qr[1].abs().compareUnsigned(d.abs()) < 0;
         });
 
         // Test multiplication corner cases
