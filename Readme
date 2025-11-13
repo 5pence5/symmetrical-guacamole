@@ -3,6 +3,14 @@
 This repository hosts experimental infrastructure for building and benchmarking high-performance `Int128`
 implementations geared towards low-latency financial workloads.
 
+## Documentation
+
+- **[AGENTS.md](AGENTS.md)** - Comprehensive guide to Int128 implementation strategies (agents)
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Developer guide for contributing new implementations
+- **[CLAUDE.md](CLAUDE.md)** - AI assistant guide and codebase architecture
+- **[REVIEW_REPORT.md](REVIEW_REPORT.md)** - Fast128 reference implementation test report
+- **[CHANGELOG.md](CHANGELOG.md)** - Project version history and changes
+
 ## Building
 
 ```
@@ -34,6 +42,8 @@ java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar Int128ArithmeticBenchmark.addi
 
 ## Adding New Implementations
 
+**Quick Start:**
+
 1. Implement `com.symguac.int128.api.Int128Arithmetic`.
 2. Register the implementation in `com.symguac.int128.bench.Int128BenchmarkRegistry` under a unique identifier.
 3. Add that identifier to the `@Param` annotation inside `Int128ArithmeticBenchmark.BenchmarkState` so it can be selected
@@ -45,5 +55,21 @@ java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar Int128ArithmeticBenchmark.addi
 
 4. Rebuild and rerun the benchmarks.
 
+**For comprehensive implementation guidance**, see [AGENTS.md](AGENTS.md) which includes:
+- Agent architecture and design patterns
+- Step-by-step development guide
+- Performance optimization techniques
+- Algorithm references and examples
+- Comparison of existing implementations
+
 The baseline `twoLongsBaseline` implementation emphasises readability and correctness; it is intentionally conservative
 so that more optimised variants can be compared against a trustworthy reference.
+
+## Available Agents
+
+| Agent ID | Description | Best For |
+|----------|-------------|----------|
+| `twoLongsBaseline` | Correctness-first reference implementation | Testing, verification, learning |
+| `fastLimb128` | High-performance optimized implementation | Production, low-latency workloads |
+
+See [AGENTS.md](AGENTS.md) for detailed comparison and selection guide.
