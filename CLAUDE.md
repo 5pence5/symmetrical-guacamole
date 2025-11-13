@@ -47,7 +47,11 @@ symmetrical-guacamole/
     ├── jmh/java/com/symguac/int128/bench/
     │   └── Int128ArithmeticBenchmark.java     # JMH benchmark suite
     └── test/java/
-        └── Fast128.java             # Reference implementation (910+ LOC)
+        ├── Int128.java              # Reference implementation (1200+ LOC, formerly Fast128.java)
+        ├── Int128Test.java          # JUnit 5 test suite
+        ├── Int128DivisionTest.java  # Division-specific tests
+        ├── DebugDivisionTest.java   # Debug utilities for division
+        └── SimpleDivTest.java       # Simple division test cases
 ```
 
 ---
@@ -140,25 +144,33 @@ All implementations represent 128-bit values as **two 64-bit signed longs**:
 - Two-limb division approximation for 128÷128 (avoids bit-by-bit iteration)
 - Zero-allocation arithmetic in mutable mode
 
-### 3. Fast128 Reference (`test/Fast128.java`)
+### 3. Int128 Reference (`test/Int128.java`)
 
-**Status:** Recently merged as the best standalone implementation
+**Status:** Production-ready standalone implementation (formerly Fast128.java, renamed in PR #6)
 
 **Characteristics:**
-- Comprehensive 910+ line implementation
+- Comprehensive 1200+ line implementation
 - Full arithmetic: add, sub, mul, div, rem
 - Bitwise operations: and, or, xor, shifts
 - String conversions: toString, fromString (decimal and hex)
-- Financial helpers: division by powers of 10, rounding
+- Financial helpers: division by powers of 10, rounding modes
 - Constants: ZERO, ONE, DECIMAL_BASE, MIN_VALUE, MAX_VALUE
 - Implements Comparable<Int128> and Serializable
 - BigInteger used ONLY for string conversions
+- **Critical bugs fixed:** Division infinite loop (PR #10, #13), signed division issues (PR #8)
 
 **Key features:**
 - Fast 128÷64 division path (common in finance)
-- Optimized 128÷128 division (two-limb approximation + correction)
-- Decimal and hexadecimal parsing
+- Optimized 128÷128 division (Knuth algorithm with quotient clamping)
+- Decimal and hexadecimal parsing with full negative number support
 - Self-contained, immutable, thread-safe
+- Comprehensive JUnit 5 test suite (100+ tests)
+
+**Recent fixes:**
+- Fixed infinite loop in `udivrem_128by128` (added iteration bounds and overflow handling)
+- Fixed `divRemPow10` for negative numbers (proper signed division)
+- Corrected quotient clamping in 128/128 division
+- Added comprehensive test coverage for edge cases
 
 ---
 
@@ -190,20 +202,36 @@ java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar Int128ArithmeticBenchmark.addi
 java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar -p implId=fastLimb128
 ```
 
+### Running Tests
+
+```bash
+# Run all JUnit tests
+mvn test
+
+# Run specific test class
+mvn test -Dtest=Int128Test
+
+# Run specific test method
+mvn test -Dtest=Int128Test#testAddition
+```
+
 ### Git Workflow
 
-**Branch:** `claude/claude-md-mhxvjslwyf4nc3jn-012qHEDUHS9YtxMBLGDyY4gV`
+**Current Branch:** `claude/update-documentation-01FTgkFeSer2BnvV2N2ReJyt`
 
 **Commit Message Style:**
 - Clear, concise descriptions
 - Examples from history:
+  - "Fix critical Int128 division bugs in Knuth algorithm and 128/64 division"
+  - "Fix file naming issue: rename Fast128.java to Int128.java"
+  - "Add comprehensive review and test suite for Fast128.java"
   - "Move Fast128.java to test directory for rigorous testing"
   - "Implement Int128 class for 128-bit integer operations"
-  - "Add high-performance 128-bit integer implementation"
 
 **Push Command:**
 ```bash
-git push -u origin claude/claude-md-mhxvjslwyf4nc3jn-012qHEDUHS9YtxMBLGDyY4gV
+git push -u origin <branch-name>
+# Note: Branch names must start with 'claude/' for CI/CD permissions
 ```
 
 ---
@@ -249,17 +277,28 @@ git push -u origin claude/claude-md-mhxvjslwyf4nc3jn-012qHEDUHS9YtxMBLGDyY4gV
 ### Testing Philosophy
 
 **Current approach:**
-- No formal unit test framework (JUnit, TestNG)
-- Light smoke tests in Fast128.java (`quickSelfCheck()`)
-- Benchmarks serve as integration tests
-- Correctness verified by comparing against baseline
+- **JUnit 5** test framework with comprehensive test suite
+- 100+ unit tests covering all operations
+- Property-based verification with BigInteger cross-validation
+- Benchmarks serve as integration and performance tests
+- Correctness verified by comparing against baseline and BigInteger
 
-**What to test:**
-- Basic arithmetic (0+1=1, 1-1=0)
-- Boundary conditions (MIN_VALUE, MAX_VALUE)
-- Overflow/underflow behavior (wrapping)
-- String round-trip (toString/fromString)
+**Test organization:**
+- `Int128Test.java`: Core arithmetic, comparisons, bitwise, shifts, string conversion
+- `Int128DivisionTest.java`: Comprehensive division and remainder tests
+- `SimpleDivTest.java`: Basic division smoke tests
+- `DebugDivisionTest.java`: Debug utilities for investigating division edge cases
+
+**What is tested:**
+- Basic arithmetic (add, sub, mul, inc, dec, negate, abs)
+- Boundary conditions (MIN_VALUE, MAX_VALUE, ZERO, ONE)
+- Overflow/underflow behavior (wrapping semantics)
+- String round-trip (toString/fromString for decimal and hex)
 - Division identity (a = q*d + r)
+- Division edge cases (negative numbers, powers of 10, 128/64 and 128/128 paths)
+- Comparison operations (signed and unsigned)
+- Bitwise operations (and, or, xor, not, shifts)
+- Serialization (byte arrays, ByteBuffer)
 
 ---
 
@@ -486,10 +525,11 @@ public static final Int128 MAX_VALUE = ...;  // 2^127 - 1
 
 **When asked to add division, modulo, or bitwise ops:**
 
-1. **Check Fast128.java reference**
-   - Located at `src/test/java/Fast128.java`
-   - Contains complete implementations of all operations
+1. **Check Int128.java reference**
+   - Located at `src/test/java/Int128.java`
+   - Contains complete, production-ready implementations of all operations
    - Copy the algorithm, adapt to the target implementation
+   - Note: Critical bugs have been fixed (division, sign handling)
 
 2. **Maintain performance standards**
    - No BigInteger in division (use Fast128's algorithm)
@@ -553,7 +593,7 @@ public static final Int128 MAX_VALUE = ...;  // 2^127 - 1
 
 **When asked to create a new 1000+ line implementation:**
 
-**Use Fast128.java as the template** (`src/test/java/Fast128.java`):
+**Use Int128.java as the template** (`src/test/java/Int128.java`):
 
 1. **Required components:**
    - Constants: ZERO, ONE, DECIMAL_BASE, MIN_VALUE, MAX_VALUE
@@ -597,12 +637,15 @@ public static final Int128 MAX_VALUE = ...;  // 2^127 - 1
 | Understand the API | `src/main/java/com/symguac/int128/api/*.java` |
 | See baseline implementation | `src/main/java/com/symguac/int128/impl/twolongs/*.java` |
 | See optimized implementation | `src/main/java/com/symguac/int128/impl/highperf/*.java` |
-| Reference complete implementation | `src/test/java/Fast128.java` |
+| Reference complete implementation | `src/test/java/Int128.java` (formerly Fast128.java) |
 | Add new implementation | `src/main/java/com/symguac/int128/impl/{newname}/` |
 | Register implementation | `src/main/java/com/symguac/int128/bench/Int128BenchmarkRegistry.java` |
 | Configure benchmarks | `src/jmh/java/com/symguac/int128/bench/Int128ArithmeticBenchmark.java` |
+| Run/write tests | `src/test/java/Int128Test.java`, `Int128DivisionTest.java` |
 | Understand build | `pom.xml` |
 | Read user docs | `Readme` |
+| Read AI assistant guide | `CLAUDE.md` (this file) |
+| Check bug fixes/review | `REVIEW_REPORT.md` |
 
 ---
 
@@ -624,11 +667,13 @@ public static final Int128 MAX_VALUE = ...;  // 2^127 - 1
 
 ### For New Implementations
 
-- **Start from Fast128.java reference**
+- **Start from Int128.java reference** (`src/test/java/Int128.java`)
 - **Implement complete API (no partial implementations)**
 - **Register in benchmark registry**
-- **Test edge cases (MIN_VALUE, MAX_VALUE, zero)**
+- **Add comprehensive tests** (follow Int128Test.java pattern)
+- **Test edge cases (MIN_VALUE, MAX_VALUE, zero, negative numbers)**
 - **Document performance characteristics**
+- **Verify division correctness** (many edge cases, see REVIEW_REPORT.md)
 
 ### For Code Changes
 
@@ -641,7 +686,41 @@ public static final Int128 MAX_VALUE = ...;  // 2^127 - 1
 
 ## Version History
 
-- **2025-11-13**: Initial CLAUDE.md created based on current codebase state
+- **2025-11-13 (Latest)**: Major documentation update
+  - Updated CLAUDE.md to reflect current state after bug fixes
+  - All references to Fast128.java updated to Int128.java
+  - Documented critical bug fixes (division infinite loop, signed division)
+  - Added JUnit 5 test suite documentation
+  - Updated git workflow and testing sections
+  - Added REVIEW_REPORT.md to quick reference
+
+- **2025-11-13 (PR #13)**: Critical division bug fixes
+  - Fixed Knuth algorithm implementation in 128/128 division
+  - Fixed 128/64 division edge cases
+  - Added debug utilities for division testing
+
+- **2025-11-13 (PR #10)**: Fixed quotient clamping and overflow handling
+  - Corrected quotient clamping in `udivrem_128by128`
+  - Added iteration bounds to prevent infinite loops
+  - Improved overflow detection
+
+- **2025-11-13 (PR #9)**: Testing infrastructure improvements
+  - Configured Maven Surefire 3.2.5 for JUnit 5
+  - Enabled automatic test discovery
+
+- **2025-11-13 (PR #8)**: Division and sign handling fixes
+  - Fixed `divRemPow10` for negative numbers
+  - Corrected signed division throughout
+
+- **2025-11-13 (PR #7)**: Test suite reorganization
+  - Renamed Int128Tester to Int128Test
+  - Added proper JUnit 5 support
+
+- **2025-11-13 (PR #6)**: File naming correction
+  - Renamed Fast128.java to Int128.java (matches public class name)
+  - Required for proper Java compilation
+
+- **2025-11-13 (PR #5)**: Initial CLAUDE.md created
   - Fast128.java recently merged to src/test/java/
   - Two implementations registered: twoLongsBaseline, fastLimb128
   - JMH benchmark suite with 5 benchmarks
@@ -652,12 +731,15 @@ public static final Int128 MAX_VALUE = ...;  // 2^127 - 1
 ## Questions & Support
 
 **For AI Assistants:**
-- When in doubt, check Fast128.java for reference implementation
+- When in doubt, check Int128.java for reference implementation (`src/test/java/Int128.java`)
 - Prioritize performance measurements over theoretical optimization
 - Always maintain correctness - performance improvements must not break arithmetic
 - Document non-obvious design decisions
+- Review REVIEW_REPORT.md for known issues and fixes
 
 **For Humans:**
 - See `Readme` for user-facing documentation
+- Check `REVIEW_REPORT.md` for comprehensive bug analysis and test results
 - Check git history for implementation evolution
 - Run benchmarks to validate performance claims
+- Run tests with `mvn test` to verify correctness

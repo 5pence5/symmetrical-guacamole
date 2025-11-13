@@ -1,49 +1,332 @@
 # Int128 Benchmark Harness
 
-This repository hosts experimental infrastructure for building and benchmarking high-performance `Int128`
-implementations geared towards low-latency financial workloads.
+High-performance 128-bit signed integer implementations optimized for low-latency financial trading workloads.
 
-## Building
+## Overview
 
-```
+This repository provides experimental infrastructure for building and benchmarking high-performance `Int128` implementations. The project uses a pluggable architecture with JMH (Java Microbenchmark Harness) to compare different arithmetic strategies.
+
+**Key Features:**
+- Exact 128-bit signed integer arithmetic (add, subtract, multiply, divide, remainder)
+- Zero-allocation patterns for hot paths
+- Multiple implementations with different performance characteristics
+- Comprehensive JUnit 5 test suite (100+ tests)
+- JMH benchmark suite for performance validation
+- Production-ready reference implementation
+
+## Quick Start
+
+### Prerequisites
+
+- Java 17 or later
+- Maven 3.x
+
+### Building
+
+```bash
 mvn clean package
 ```
 
-The command produces a runnable JMH fat-jar under `target/int128-0.1.0-SNAPSHOT-shaded.jar`.
+This produces a runnable JMH fat-jar: `target/int128-0.1.0-SNAPSHOT-shaded.jar`
 
-## Running Benchmarks
+### Running Tests
 
-You can execute every benchmark via:
+```bash
+# Run all tests
+mvn test
 
+# Run specific test class
+mvn test -Dtest=Int128Test
+
+# Run specific test method
+mvn test -Dtest=Int128Test#testAddition
 ```
+
+### Running Benchmarks
+
+```bash
+# Method 1: Via Maven
 mvn clean install
 mvn jmh:jmh
-```
 
-Alternatively, run the shaded JAR directly:
-
-```
+# Method 2: Direct JAR execution (all benchmarks)
 java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar
-```
 
-To focus on a particular implementation or benchmark, use standard JMH filters, for example:
-
-```
+# Method 3: Specific benchmark
 java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar Int128ArithmeticBenchmark.additionWithReuse
+
+# Method 4: Specific implementation
+java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar -p implId=fastLimb128
+
+# Method 5: With profiling
+java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar -prof gc
 ```
+
+## Implementations
+
+### 1. TwoLongs Baseline (`twoLongsBaseline`)
+
+**Philosophy:** Correctness and readability over performance
+
+A straightforward implementation using `BigInteger` for multiplication. This serves as a reference implementation for correctness testing.
+
+**Use for:**
+- Verifying new implementations
+- Understanding the API contract
+- Teaching/explaining Int128 arithmetic
+
+### 2. FastInt128 (`fastLimb128`)
+
+**Philosophy:** Maximum performance without sacrificing correctness
+
+An optimized implementation using:
+- Custom 64×64→128 multiplication (32-bit limb decomposition)
+- Fast 128÷64 division path for common operations
+- Zero-allocation arithmetic in mutable mode
+- No BigInteger in hot paths
+
+**Use for:**
+- Performance-critical applications
+- Benchmarking against custom implementations
+
+### 3. Int128 Reference (Standalone)
+
+**Location:** `src/test/java/Int128.java`
+
+A comprehensive, production-ready standalone implementation (1200+ lines):
+- Full arithmetic: add, sub, mul, div, rem
+- Bitwise operations: and, or, xor, not, shifts
+- String conversions: decimal and hexadecimal
+- Financial helpers: division by powers of 10, rounding modes
+- Constants: ZERO, ONE, DECIMAL_BASE, MIN_VALUE, MAX_VALUE
+- Implements `Comparable<Int128>` and `Serializable`
+
+**Recent fixes (production-ready):**
+- Fixed infinite loop in 128/128 division (PR #10, #13)
+- Fixed signed division for negative numbers (PR #8)
+- Corrected quotient clamping in division algorithms
+- Comprehensive test coverage (100+ tests)
+
+## Architecture
+
+### Plugin-Based Design
+
+The codebase uses a plugin pattern to enable comparing different Int128 implementations:
+
+```
+Int128Arithmetic Interface
+       ↑
+       │ implements
+   ┌───┴───┐
+   │       │
+Baseline  FastInt128
+   │       │
+   └───┬───┘
+       │
+   Registry + JMH Benchmarks
+```
+
+### Two-Limb Representation
+
+All implementations use a two-limb representation:
+- `high`: upper 64 bits (signed, contains sign bit at position 127)
+- `low`: lower 64 bits (treated as unsigned for value composition)
+- Value = `(high << 64) + (low & 0xFFFF_FFFF_FFFF_FFFFL)`
+
+### API Design
+
+**Int128Value** - Read-only value interface
+- `long high()`, `long low()` - Access to limbs
+
+**MutableInt128Value** - Mutable value for zero-allocation patterns
+- `void set(long high, long low)` - Update value in place
+- `Int128Value immutableCopy()` - Create immutable copy
+
+**Int128Arithmetic** - Main arithmetic interface
+- Mutable operations: `addInto()`, `subtractInto()`, `multiplyInto()` (zero-allocation)
+- Immutable operations: `add()`, `subtract()`, `multiply()` (allocating)
+- Factory methods: `fromParts()`, `fromLong()`, `createMutable()`
+
+## Available Benchmarks
+
+| Benchmark | Description | Pattern |
+|-----------|-------------|---------|
+| `additionWithReuse` | Addition reusing mutable instance | Zero-allocation |
+| `subtractionWithReuse` | Subtraction reusing mutable instance | Zero-allocation |
+| `multiplicationWithReuse` | Multiplication reusing mutable instance | Zero-allocation |
+| `additionAllocating` | Addition creating new objects | Measures allocation cost |
+| `multiplicationAllocating` | Multiplication creating new objects | Measures allocation cost |
 
 ## Adding New Implementations
 
-1. Implement `com.symguac.int128.api.Int128Arithmetic`.
-2. Register the implementation in `com.symguac.int128.bench.Int128BenchmarkRegistry` under a unique identifier.
-3. Add that identifier to the `@Param` annotation inside `Int128ArithmeticBenchmark.BenchmarkState` so it can be selected
-   from the command line:
+1. **Implement** `com.symguac.int128.api.Int128Arithmetic`:
 
-   ```java
-   @Param({Int128ImplementationIds.TWO_LONGS_BASELINE, "yourNewId"})
-   ```
+```java
+package com.symguac.int128.impl.myimpl;
 
-4. Rebuild and rerun the benchmarks.
+import com.symguac.int128.api.*;
 
-The baseline `twoLongsBaseline` implementation emphasises readability and correctness; it is intentionally conservative
-so that more optimised variants can be compared against a trustworthy reference.
+public class MyInt128Arithmetic implements Int128Arithmetic {
+    @Override
+    public String id() {
+        return "myImplementation";
+    }
+
+    // Implement required methods...
+}
+```
+
+2. **Register** in `Int128BenchmarkRegistry.java`:
+
+```java
+static {
+    register(Int128ImplementationIds.TWO_LONGS_BASELINE, TwoLongsBaselineArithmetic::new);
+    register(Int128ImplementationIds.FAST_LIMB_BASED, FastInt128Arithmetic::new);
+    register("myImplementation", MyInt128Arithmetic::new);  // Add this
+}
+```
+
+3. **Add ID constant** to `Int128ImplementationIds.java`:
+
+```java
+public static final String MY_IMPLEMENTATION = "myImplementation";
+```
+
+4. **Enable in benchmark** `Int128ArithmeticBenchmark.java`:
+
+```java
+@Param({
+    Int128ImplementationIds.TWO_LONGS_BASELINE,
+    Int128ImplementationIds.FAST_LIMB_BASED,
+    "myImplementation"  // Add this
+})
+private String implId;
+```
+
+5. **Rebuild and test**:
+
+```bash
+mvn clean package
+mvn test
+java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar
+```
+
+## Testing
+
+The project uses **JUnit 5** with comprehensive test coverage:
+
+- **Int128Test.java**: Core arithmetic, comparisons, bitwise, shifts, string conversion
+- **Int128DivisionTest.java**: Comprehensive division and remainder tests
+- **SimpleDivTest.java**: Basic division smoke tests
+- **DebugDivisionTest.java**: Debug utilities for division edge cases
+
+**Test coverage includes:**
+- Basic arithmetic operations
+- Boundary conditions (MIN_VALUE, MAX_VALUE)
+- Overflow/underflow wrapping semantics
+- String conversions (decimal and hexadecimal)
+- Division edge cases (negative numbers, 128/64 and 128/128 paths)
+- Bitwise and shift operations
+- Serialization and deserialization
+
+## Performance Characteristics
+
+### Critical Hot Paths (Zero Allocation)
+
+1. Addition with reuse (`addInto`)
+2. Subtraction with reuse (`subtractInto`)
+3. Multiplication with reuse (`multiplyInto`)
+
+### Optimization Techniques
+
+**64×64→128 Multiplication:**
+- Portable 32-bit split (JIT-friendly on x86_64 and AArch64)
+- Four partial products combined to 128-bit result
+- No `BigInteger` overhead
+
+**Fast 128÷64 Division:**
+- Specialized path for divisors ≤ 64 bits
+- Common in financial workloads (division by 10^k, fees)
+
+**Singleton Reuse:**
+- Factory methods return shared constants for `ZERO`, `ONE`
+- Reduces allocation pressure
+
+## Known Issues and Fixes
+
+**Critical bugs fixed (all resolved):**
+- ✅ Infinite loop in 128/128 division - Fixed in PR #10, #13
+- ✅ Incorrect signed division for negative numbers - Fixed in PR #8
+- ✅ File naming (Fast128.java → Int128.java) - Fixed in PR #6
+- ✅ Quotient clamping in Knuth algorithm - Fixed in PR #10
+
+See `REVIEW_REPORT.md` for comprehensive bug analysis and test results.
+
+## Documentation
+
+- **Readme** (this file): User-facing documentation and quick start
+- **CLAUDE.md**: Comprehensive AI assistant guide with architecture details
+- **REVIEW_REPORT.md**: Detailed bug analysis and test results
+- **JavaDoc**: Inline documentation in source files
+
+## Project Structure
+
+```
+symmetrical-guacamole/
+├── pom.xml                          # Maven configuration
+├── Readme                           # This file
+├── CLAUDE.md                        # AI assistant guide
+├── REVIEW_REPORT.md                 # Bug analysis and test report
+└── src/
+    ├── main/java/com/symguac/int128/
+    │   ├── api/                     # Core interfaces
+    │   │   ├── Int128Arithmetic.java
+    │   │   ├── Int128Value.java
+    │   │   └── MutableInt128Value.java
+    │   ├── bench/                   # Registry and IDs
+    │   │   ├── Int128BenchmarkRegistry.java
+    │   │   └── Int128ImplementationIds.java
+    │   └── impl/                    # Implementations
+    │       ├── twolongs/            # Baseline
+    │       └── highperf/            # Optimized
+    ├── jmh/java/com/symguac/int128/bench/
+    │   └── Int128ArithmeticBenchmark.java
+    └── test/java/
+        ├── Int128.java              # Reference implementation
+        ├── Int128Test.java          # JUnit test suite
+        └── Int128DivisionTest.java  # Division tests
+```
+
+## Requirements
+
+- **Java:** 17+
+- **Maven:** 3.x
+- **JMH:** 1.36 (included)
+- **JUnit:** 5.10.1 (included)
+
+## Design Goals
+
+1. **Correctness:** Exact two's complement arithmetic, thoroughly tested
+2. **Performance:** Low-latency operations, zero-allocation hot paths
+3. **Simplicity:** Clean plugin architecture, easy to extend
+4. **Financial focus:** Optimized for common trading workloads (division by 10^k)
+
+## Contributing
+
+For contributors and AI assistants, see `CLAUDE.md` for:
+- Detailed architecture documentation
+- Code conventions and standards
+- Step-by-step implementation guides
+- Testing philosophy
+- Performance considerations
+
+## License
+
+See repository license file for details.
+
+## Support
+
+- Check `CLAUDE.md` for comprehensive implementation guidance
+- Review `REVIEW_REPORT.md` for known issues and test results
+- Run `mvn test` to verify correctness
+- Run benchmarks to validate performance claims
