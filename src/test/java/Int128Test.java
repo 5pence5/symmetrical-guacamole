@@ -2,15 +2,41 @@ import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.junit.jupiter.api.Test;
+
 /**
- * Comprehensive tester for Int128 class.
+ * Comprehensive test suite for Int128 class.
  * Tests all functionality and reports any issues found.
+ * Matches Maven Surefire discovery pattern (*Test.java).
  */
-public class Int128Tester {
+public class Int128Test {
 
     private static final List<String> issues = new ArrayList<>();
     private static int testsRun = 0;
     private static int testsPassed = 0;
+
+    /**
+     * JUnit test method that executes all Int128 tests.
+     * This allows Maven Surefire to discover and run the comprehensive test suite.
+     */
+    @Test
+    public void runAllTests() {
+        // Reset state for clean test run
+        issues.clear();
+        testsRun = 0;
+        testsPassed = 0;
+
+        // Run all tests
+        main(null);
+
+        // Fail the JUnit test if any issues were found
+        if (!issues.isEmpty()) {
+            throw new AssertionError(
+                String.format("Int128 test suite failed: %d out of %d tests failed. See output for details.",
+                    testsRun - testsPassed, testsRun)
+            );
+        }
+    }
 
     public static void main(String[] args) {
         System.out.println("=".repeat(80));
