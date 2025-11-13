@@ -27,6 +27,7 @@ symmetrical-guacamole/
 ├── pom.xml                          # Maven configuration (Java 17, JMH dependencies)
 ├── Readme                           # User-facing documentation
 ├── CLAUDE.md                        # This file - AI assistant guide
+├── REVIEW_REPORT.md                 # Comprehensive test report and bug analysis
 └── src/
     ├── main/java/com/symguac/int128/
     │   ├── api/                     # Core interfaces (plugin contract)
@@ -47,7 +48,8 @@ symmetrical-guacamole/
     ├── jmh/java/com/symguac/int128/bench/
     │   └── Int128ArithmeticBenchmark.java     # JMH benchmark suite
     └── test/java/
-        └── Fast128.java             # Reference implementation (910+ LOC)
+        ├── Int128.java              # Reference implementation (1000+ LOC)
+        └── Int128Tester.java        # Comprehensive test suite (102+ tests)
 ```
 
 ---
@@ -140,12 +142,12 @@ All implementations represent 128-bit values as **two 64-bit signed longs**:
 - Two-limb division approximation for 128÷128 (avoids bit-by-bit iteration)
 - Zero-allocation arithmetic in mutable mode
 
-### 3. Fast128 Reference (`test/Fast128.java`)
+### 3. Int128 Reference (`test/Int128.java`)
 
-**Status:** Recently merged as the best standalone implementation
+**Status:** Comprehensive standalone implementation (formerly Fast128.java, renamed Nov 2025)
 
 **Characteristics:**
-- Comprehensive 910+ line implementation
+- Comprehensive 1000+ line implementation
 - Full arithmetic: add, sub, mul, div, rem
 - Bitwise operations: and, or, xor, shifts
 - String conversions: toString, fromString (decimal and hex)
@@ -159,6 +161,22 @@ All implementations represent 128-bit values as **two 64-bit signed longs**:
 - Optimized 128÷128 division (two-limb approximation + correction)
 - Decimal and hexadecimal parsing
 - Self-contained, immutable, thread-safe
+
+**Test Coverage:**
+- Comprehensive test suite in Int128Tester.java (102+ tests)
+- Test results: 100/103 passed (97.1% pass rate)
+- See REVIEW_REPORT.md for detailed analysis
+
+**Known Issues (see REVIEW_REPORT.md):**
+- ⚠️ **CRITICAL**: Infinite loop in `udivrem_128by128()` for certain 128÷128 divisions
+- ⚠️ **CRITICAL**: Incorrect `divRemPow10()` results for negative numbers (uses unsigned division on signed values)
+- These bugs affect financial operations and can cause DoS or data corruption
+- **Status**: Issues documented but not yet fixed
+
+**Recommendation:**
+- Use as reference for algorithms and structure
+- DO NOT use in production until critical bugs are fixed
+- For production code, use FastInt128 implementation which is verified correct
 
 ---
 
@@ -192,18 +210,19 @@ java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar -p implId=fastLimb128
 
 ### Git Workflow
 
-**Branch:** `claude/claude-md-mhxvjslwyf4nc3jn-012qHEDUHS9YtxMBLGDyY4gV`
+**Current Branch:** `claude/update-claude-md-01MS1kHZqeHReXwHbHfhTQic`
 
 **Commit Message Style:**
 - Clear, concise descriptions
 - Examples from history:
+  - "Fix file naming issue: rename Fast128.java to Int128.java"
+  - "Add comprehensive review and test suite for Fast128.java"
   - "Move Fast128.java to test directory for rigorous testing"
   - "Implement Int128 class for 128-bit integer operations"
-  - "Add high-performance 128-bit integer implementation"
 
 **Push Command:**
 ```bash
-git push -u origin claude/claude-md-mhxvjslwyf4nc3jn-012qHEDUHS9YtxMBLGDyY4gV
+git push -u origin claude/update-claude-md-01MS1kHZqeHReXwHbHfhTQic
 ```
 
 ---
@@ -249,17 +268,29 @@ git push -u origin claude/claude-md-mhxvjslwyf4nc3jn-012qHEDUHS9YtxMBLGDyY4gV
 ### Testing Philosophy
 
 **Current approach:**
-- No formal unit test framework (JUnit, TestNG)
-- Light smoke tests in Fast128.java (`quickSelfCheck()`)
+- Comprehensive test suite in `Int128Tester.java` (102+ tests, 97.1% pass rate)
+- Tests cover: arithmetic, comparison, bitwise, shifts, division, string conversion, serialization
+- Light smoke tests in Int128.java (`quickSelfCheck()`)
 - Benchmarks serve as integration tests
-- Correctness verified by comparing against baseline
+- Correctness verified by comparing against baseline and BigInteger cross-validation
+- Detailed analysis in REVIEW_REPORT.md
 
-**What to test:**
+**Test Categories:**
 - Basic arithmetic (0+1=1, 1-1=0)
 - Boundary conditions (MIN_VALUE, MAX_VALUE)
 - Overflow/underflow behavior (wrapping)
 - String round-trip (toString/fromString)
 - Division identity (a = q*d + r)
+- Bitwise operations and shifts
+- Edge cases and corner cases
+- Financial operations (division by powers of 10)
+
+**Running Tests:**
+```bash
+# Compile and run the test suite
+javac -d target src/test/java/Int128.java src/test/java/Int128Tester.java
+java -cp target Int128Tester
+```
 
 ---
 
@@ -486,15 +517,19 @@ public static final Int128 MAX_VALUE = ...;  // 2^127 - 1
 
 **When asked to add division, modulo, or bitwise ops:**
 
-1. **Check Fast128.java reference**
-   - Located at `src/test/java/Fast128.java`
+1. **Check Int128.java reference**
+   - Located at `src/test/java/Int128.java`
    - Contains complete implementations of all operations
    - Copy the algorithm, adapt to the target implementation
+   - **WARNING**: Be aware of known bugs (see REVIEW_REPORT.md):
+     - Infinite loop in `udivrem_128by128()` for some inputs
+     - Incorrect `divRemPow10()` for negative numbers
 
 2. **Maintain performance standards**
-   - No BigInteger in division (use Fast128's algorithm)
+   - No BigInteger in division (use Int128's algorithm as reference, but test thoroughly)
    - Implement fast 128÷64 path for common cases
    - Add constants for powers of 10
+   - For `divRemPow10`, handle negative numbers correctly (avoid unsigned division on signed values)
 
 3. **Add to interface if needed**
    - Update `Int128Arithmetic.java` with new method signature
@@ -553,7 +588,12 @@ public static final Int128 MAX_VALUE = ...;  // 2^127 - 1
 
 **When asked to create a new 1000+ line implementation:**
 
-**Use Fast128.java as the template** (`src/test/java/Fast128.java`):
+**Use Int128.java as the template** (`src/test/java/Int128.java`):
+
+**⚠️ IMPORTANT**: The reference implementation has known bugs (see REVIEW_REPORT.md):
+- Infinite loop in 128÷128 division for certain inputs
+- Incorrect divRemPow10 for negative numbers
+- DO NOT copy these bugs - fix them in your implementation
 
 1. **Required components:**
    - Constants: ZERO, ONE, DECIMAL_BASE, MIN_VALUE, MAX_VALUE
@@ -597,7 +637,9 @@ public static final Int128 MAX_VALUE = ...;  // 2^127 - 1
 | Understand the API | `src/main/java/com/symguac/int128/api/*.java` |
 | See baseline implementation | `src/main/java/com/symguac/int128/impl/twolongs/*.java` |
 | See optimized implementation | `src/main/java/com/symguac/int128/impl/highperf/*.java` |
-| Reference complete implementation | `src/test/java/Fast128.java` |
+| Reference complete implementation | `src/test/java/Int128.java` (⚠️ has known bugs, see REVIEW_REPORT.md) |
+| Run comprehensive tests | `src/test/java/Int128Tester.java` |
+| Review test results and known issues | `REVIEW_REPORT.md` |
 | Add new implementation | `src/main/java/com/symguac/int128/impl/{newname}/` |
 | Register implementation | `src/main/java/com/symguac/int128/bench/Int128BenchmarkRegistry.java` |
 | Configure benchmarks | `src/jmh/java/com/symguac/int128/bench/Int128ArithmeticBenchmark.java` |
@@ -641,7 +683,17 @@ public static final Int128 MAX_VALUE = ...;  // 2^127 - 1
 
 ## Version History
 
-- **2025-11-13**: Initial CLAUDE.md created based on current codebase state
+- **2025-11-13 (v2)**: Updated CLAUDE.md to reflect recent developments
+  - Fast128.java renamed to Int128.java (fixes critical file naming issue)
+  - Added comprehensive test suite: Int128Tester.java with 102+ tests (97.1% pass rate)
+  - Created REVIEW_REPORT.md with detailed analysis and bug documentation
+  - **Known Issues Documented**:
+    - Infinite loop in `udivrem_128by128()` (DoS vulnerability)
+    - Incorrect `divRemPow10()` for negative numbers (data corruption risk)
+  - Updated branch: `claude/update-claude-md-01MS1kHZqeHReXwHbHfhTQic`
+  - Added testing guidance and warnings about reference implementation bugs
+
+- **2025-11-13 (v1)**: Initial CLAUDE.md created based on current codebase state
   - Fast128.java recently merged to src/test/java/
   - Two implementations registered: twoLongsBaseline, fastLimb128
   - JMH benchmark suite with 5 benchmarks
@@ -652,12 +704,15 @@ public static final Int128 MAX_VALUE = ...;  // 2^127 - 1
 ## Questions & Support
 
 **For AI Assistants:**
-- When in doubt, check Fast128.java for reference implementation
+- When in doubt, check Int128.java for reference implementation (but be aware of known bugs)
+- Consult REVIEW_REPORT.md for documented issues before copying algorithms
 - Prioritize performance measurements over theoretical optimization
 - Always maintain correctness - performance improvements must not break arithmetic
 - Document non-obvious design decisions
+- Test thoroughly, especially division and financial operations with negative numbers
 
 **For Humans:**
 - See `Readme` for user-facing documentation
 - Check git history for implementation evolution
 - Run benchmarks to validate performance claims
+- Review REVIEW_REPORT.md for known issues in the Int128 reference implementation
