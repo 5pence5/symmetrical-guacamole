@@ -65,7 +65,7 @@ public class Int128ArithmeticBenchmark {
 
     @State(Scope.Thread)
     public static class BenchmarkState {
-        @Param({Int128ImplementationIds.TWO_LONGS_BASELINE})
+        @Param({Int128ImplementationIds.TWO_LONGS_BASELINE, Int128ImplementationIds.FAST_LIMB_BASED})
         public String implementation;
 
         @Param({"1024"})

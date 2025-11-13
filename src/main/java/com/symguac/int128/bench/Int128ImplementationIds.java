@@ -7,4 +7,5 @@ public final class Int128ImplementationIds {
     private Int128ImplementationIds() {}
 
     public static final String TWO_LONGS_BASELINE = "twoLongsBaseline";
+    public static final String FAST_LIMB_BASED = "fastLimb128";
 }
