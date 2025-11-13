@@ -64,6 +64,27 @@ public final class TwoLongsBaselineArithmetic implements Int128Arithmetic {
         destination.set(high, low);
     }
 
+    @Override
+    public void divideRemainderInto(Int128Value dividend, Int128Value divisor,
+                                     MutableInt128Value quotient, MutableInt128Value remainder) {
+        if (divisor.high() == 0L && divisor.low() == 0L) {
+            throw new ArithmeticException("divide by zero");
+        }
+
+        BigInteger a = toBigInteger(dividend);
+        BigInteger b = toBigInteger(divisor);
+        BigInteger q = a.divide(b).and(MASK_128);
+        BigInteger r = a.remainder(b).and(MASK_128);
+
+        long qHigh = q.shiftRight(64).longValue();
+        long qLow = q.and(MASK_64).longValue();
+        long rHigh = r.shiftRight(64).longValue();
+        long rLow = r.and(MASK_64).longValue();
+
+        quotient.set(qHigh, qLow);
+        remainder.set(rHigh, rLow);
+    }
+
     private static BigInteger toBigInteger(Int128Value value) {
         BigInteger upper = BigInteger.valueOf(value.high());
         BigInteger lower = BigInteger.valueOf(value.low()).and(MASK_64);
