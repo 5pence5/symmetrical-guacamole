@@ -565,7 +565,7 @@ public final class FastInt128Value implements Int128Value, Comparable<FastInt128
      * Returns {@code true} if the value fits into a 64-bit signed integer without loss of precision.
      */
     public boolean fitsInLong() {
-        return high == 0L || (high == -1L && low < 0L);
+        return (high == 0L && low >= 0L) || (high == -1L && low < 0L);
     }
 
     /**

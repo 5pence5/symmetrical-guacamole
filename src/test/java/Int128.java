@@ -648,8 +648,8 @@ public final class Int128 implements Comparable<Int128>, Serializable {
 
     /** Exact narrowing to long; throws if out of range. */
     public long toLongExact() {
-        if (hi == 0L) return lo;
-        if (hi == -1L && (lo & SIGN_BIT_64) != 0) return lo;
+        boolean loSign = (lo & SIGN_BIT_64) != 0;
+        if ((!loSign && hi == 0L) || (loSign && hi == -1L)) return lo;
         throw new ArithmeticException("Out of long range: " + this);
     }
 
@@ -950,7 +950,8 @@ public final class Int128 implements Comparable<Int128>, Serializable {
 
     /** Fits exactly in signed 64‑bit. */
     public boolean fitsInLong() {
-        return hi == 0L || (hi == -1L && (lo & SIGN_BIT_64) != 0);
+        boolean loSign = (lo & SIGN_BIT_64) != 0;
+        return loSign ? (hi == -1L) : (hi == 0L);
     }
 
     /** Fits in unsigned 64‑bit. */
