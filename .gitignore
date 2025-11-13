@@ -1,0 +1,18 @@
+# Maven build output
+/target/
+dependency-reduced-pom.xml
+
+# IntelliJ IDEA
+/.idea/
+*.iml
+
+# Eclipse
+.project
+.classpath
+.settings/
+
+# VS Code
+.vscode/
+
+# MacOS metadata
+.DS_Store
