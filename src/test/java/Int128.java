@@ -1,6 +1,7 @@
 import java.io.Serializable;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 /**
  * Int128 — High‑performance, exact, signed 128‑bit two's‑complement integer for latency‑sensitive workloads.
@@ -726,15 +727,35 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         return new Int128(hi, lo);
     }
 
-    /** Put into a ByteBuffer as two consecutive longs (hi, lo). */
-    public void putTo(ByteBuffer bb) {
-        bb.putLong(hi).putLong(lo);
+    /** Put into a ByteBuffer as two consecutive longs (hi, lo) in big-endian byte order. */
+    public void putToBE(ByteBuffer bb) {
+        ByteOrder old = bb.order();
+        try {
+            bb.order(ByteOrder.BIG_ENDIAN);
+            bb.putLong(hi).putLong(lo);
+        } finally {
+            bb.order(old);
+        }
     }
 
-    /** Read from a ByteBuffer (hi, lo). */
-    public static Int128 getFrom(ByteBuffer bb) {
-        return new Int128(bb.getLong(), bb.getLong());
+    /** Read from a ByteBuffer (hi, lo) in big-endian byte order. */
+    public static Int128 getFromBE(ByteBuffer bb) {
+        ByteOrder old = bb.order();
+        try {
+            bb.order(ByteOrder.BIG_ENDIAN);
+            long hi = bb.getLong();
+            long lo = bb.getLong();
+            return new Int128(hi, lo);
+        } finally {
+            bb.order(old);
+        }
     }
+
+    /** Put into a ByteBuffer as two consecutive longs (hi, lo). Delegates to big-endian version. */
+    public void putTo(ByteBuffer bb) { putToBE(bb); }
+
+    /** Read from a ByteBuffer (hi, lo). Delegates to big-endian version. */
+    public static Int128 getFrom(ByteBuffer bb) { return getFromBE(bb); }
 
     // BigInteger bridging for string I/O only
     private static BigInteger toBigInteger(Int128 x) {
@@ -802,25 +823,6 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         long p3 = x1 * y1;
         long mid = (p1 & 0xFFFF_FFFFL) + (p2 & 0xFFFF_FFFFL) + (p0 >>> 32);
         return p3 + (p1 >>> 32) + (p2 >>> 32) + (mid >>> 32);
-    }
-
-    /** Unsigned 64×64 → 128 product; returns [hi, lo]. */
-    private static long[] mul64to128(long x, long y) {
-        // Portable 32‑bit split. For JDK9+ you may switch to Math.multiplyHigh(x,y) here.
-        long x0 = x & 0xFFFF_FFFFL;
-        long x1 = x >>> 32;
-        long y0 = y & 0xFFFF_FFFFL;
-        long y1 = y >>> 32;
-
-        long p0 = x0 * y0;            // 64‑bit
-        long p1 = x0 * y1;            // 64‑bit
-        long p2 = x1 * y0;            // 64‑bit
-        long p3 = x1 * y1;            // 64‑bit
-
-        long mid = (p1 & 0xFFFF_FFFFL) + (p2 & 0xFFFF_FFFFL) + (p0 >>> 32);
-        long hi  = p3 + (p1 >>> 32) + (p2 >>> 32) + (mid >>> 32);
-        long lo  = (p0 & 0xFFFF_FFFFL) | (mid << 32);
-        return new long[] { hi, lo };
     }
 
     /** 128‑bit unsigned compare: returns -1, 0, +1. */
@@ -900,58 +902,63 @@ public final class Int128 implements Comparable<Int128>, Serializable {
     private static long[] udivrem_128by128(long aHi, long aLo, long bHi, long bLo) {
         // Preconditions: (aHi:aLo) >= (bHi:bLo), and bHi != 0.
 
-        // 1) Normalise so that the top bit of divisor is 1.
-        final int s  = Long.numberOfLeadingZeros(bHi);
+        // 1) Normalise divisor so its top bit is 1.
+        final int  s  = Long.numberOfLeadingZeros(bHi);
         final long d1 = (s == 0) ? bHi : (bHi << s) | (bLo >>> (64 - s));
         final long d0 = (s == 0) ? bLo : (bLo << s);
 
-        // Normalise dividend, tracking overflow from aHi
+        // Normalise dividend (carry bits from aHi go into n2)
         final long n2 = (s == 0) ? 0L  : (aHi >>> (64 - s));
         final long n1 = (s == 0) ? aHi : (aHi << s) | (aLo >>> (64 - s));
         final long n0 = (s == 0) ? aLo : (aLo << s);
 
-        // 2) Trial quotient using the top two limbs (Knuth D2/D3).
+        // 2) Trial quotient using top two limbs (Knuth D2/D3)
         long qHi_est = Long.divideUnsigned(n2, d1);
         long rem1    = Long.remainderUnsigned(n2, d1);
 
-        // Finish 128/64 division of (rem1:n1)/d1 using the existing 96/64 helper.
-        long[] ql_r  = udivrem_96by64_bitloop(rem1, n1, d1);
-        long q    = ql_r[0];
-        long rhat = ql_r[1];
+        // Inline 96/64 division of (rem1:n1)/d1 → q, rhat (alloc‑free)
+        long q = 0L;
+        long rhat = rem1;
+        for (int i = 63; i >= 0; i--) {
+            long bit = (n1 >>> i) & 1L;
+            long r2  = (rhat << 1) | bit;
+            if (rhat < 0L || Long.compareUnsigned(r2, d1) >= 0) {
+                rhat = r2 - d1;
+                q |= (1L << i);
+            } else {
+                rhat = r2;
+            }
+        }
 
-        // Reduce q from >= 2^64 to < 2^64 if needed (bounded; at most one iteration).
+        // If q was ≥ 2^64, reduce it and adjust rhat (at most once)
         while (qHi_est != 0L) {
             if (q == 0L) { qHi_est--; q = 0xFFFF_FFFF_FFFF_FFFFL; }
             else         { q--; }
             long oldR = rhat;
             rhat = rhat + d1;
-            if (Long.compareUnsigned(rhat, oldR) < 0) break; // overflow => stop
+            if (Long.compareUnsigned(rhat, oldR) < 0) break; // overflow → stop
         }
 
-        // 3) Knuth corrections: while q*d0 > rhat*B + n0, decrement q and add d1 to rhat (≤ 2 iterations).
+        // 3) Corrections (≤2): ensure q*d0 ≤ rhat*B + n0
         for (int corrections = 0; corrections < 2; corrections++) {
             long qd0_lo = mulLo64(q, d0);
             long qd0_hi = mulHi64(q, d0);
-
             boolean needsCorrection =
                 (Long.compareUnsigned(qd0_hi, rhat) > 0) ||
                 (qd0_hi == rhat && Long.compareUnsigned(qd0_lo, n0) > 0);
-
             if (!needsCorrection) break;
-
             q--;
             long oldR = rhat;
             rhat = rhat + d1;
-            if (Long.compareUnsigned(rhat, oldR) < 0) break; // overflow => stop
+            if (Long.compareUnsigned(rhat, oldR) < 0) break; // overflow → stop
         }
 
-        // 4) Subtract q * D from normalised numerator (n2:n1:n0), inline 192‑bit multiply.
-        // qD = (d1:d0) * q  => top, hi, lo
+        // 4) Subtract q * D from the 3‑limb numerator (inline 192‑bit multiply)
+        // qD = (d1:d0) * q → top, hi, lo
         long qD_lo    = mulLo64(d0, q);
         long qD_loHi  = mulHi64(d0, q);
         long qD_hiLo  = mulLo64(d1, q);
         long qD_hiHi  = mulHi64(d1, q);
-
         long qD_hi  = qD_loHi + qD_hiLo;
         long qD_top = qD_hiHi + (Long.compareUnsigned(qD_hi, qD_loHi) < 0 ? 1L : 0L);
 
@@ -962,10 +969,15 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         long rMid = n1 - qD_hi - borrow1;
         long borrow2 = (Long.compareUnsigned(n1, qD_hi) < 0 || (n1 == qD_hi && borrow1 != 0)) ? 1L : 0L;
 
+        // Top limb (candidate); DO NOT use signed < 0 for underflow detection
         long rHi = n2 - qD_top - borrow2;
 
-        // If underflowed (top‑limb borrow), add D back once and decrement q.
-        if (rHi < 0) {
+        // Correct underflow using unsigned condition on n2, qD_top, borrow2
+        boolean under =
+            (Long.compareUnsigned(n2, qD_top) < 0) ||
+            (n2 == qD_top && borrow2 != 0);
+
+        if (under) {
             long rLo2 = rLo + d0;
             long carry = Long.compareUnsigned(rLo2, rLo) < 0 ? 1L : 0L;
             long rMid2 = rMid + d1 + carry;
@@ -974,11 +986,11 @@ public final class Int128 implements Comparable<Int128>, Serializable {
             q--;
         }
 
-        // 5) Denormalise remainder by shifting right s bits; use rMid:rLo as the 128‑bit remainder.
+        // 5) Denormalise remainder by shifting right s bits; remainder is rMid:rLo
         final long rHiDen = (s == 0) ? rMid : (rMid >>> s);
         final long rLoDen = (s == 0) ? rLo  : (rLo >>> s) | (rMid << (64 - s));
 
-        // Quotient is one limb: qHi = 0, qLo = q
+        // Quotient fits one limb: qHi=0, qLo=q
         return new long[] { 0L, q, rHiDen, rLoDen };
     }
 
