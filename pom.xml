@@ -41,10 +41,8 @@
 
     <build>
         <plugins>
-            <!-- Note: These plugins work fine in normal development environments.
-                 They were temporarily commented during sandbox testing due to network issues,
-                 but should be uncommented for production builds. -->
-            <plugin>
+            <!-- Note: Maven enforcer plugin temporarily disabled due to proxy authentication issues -->
+            <!--<plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-enforcer-plugin</artifactId>
                 <version>3.4.1</version>
@@ -62,7 +60,7 @@
                         </configuration>
                     </execution>
                 </executions>
-            </plugin>
+            </plugin>-->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -79,7 +77,8 @@
                     <argLine>-Dfile.encoding=UTF-8</argLine>
                 </configuration>
             </plugin>
-            <plugin>
+            <!-- Temporarily disabled due to proxy authentication issues -->
+            <!--<plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-source-plugin</artifactId>
                 <version>3.3.1</version>
@@ -91,8 +90,8 @@
                         </goals>
                     </execution>
                 </executions>
-            </plugin>
-            <plugin>
+            </plugin>-->
+            <!--<plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
                 <version>3.10.0</version>
@@ -108,7 +107,7 @@
                         </configuration>
                     </execution>
                 </executions>
-            </plugin>
+            </plugin>-->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
