@@ -192,7 +192,7 @@ mvn clean package
 ```bash
 # Method 1: Via Maven
 mvn clean install
-mvn jmh:jmh
+mvn jmh:benchmark
 
 # Method 2: Direct JAR execution (all benchmarks)
 java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar

@@ -78,7 +78,10 @@ The harness is only there to make it easy to build and sanity-check performance.
 It uses a single parameter named **`implementation`** to switch between implementations.
 
 ```bash
-# Run all benchmarks
+# Run all benchmarks via Maven
+mvn jmh:benchmark
+
+# Or using the shaded JAR that Maven produces
 java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar
 
 # Specific benchmark + implementation (note the param name)
