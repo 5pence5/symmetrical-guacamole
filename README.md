@@ -149,7 +149,7 @@ java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar -p implementation=<yourId>
 
 ## Licence
 
-Licensed under **Apache-2.0**. See [LICENSE](LICENSE) for full text.
+Licensed under **MIT**. See [LICENSE](LICENSE) for full text.
 
 ---
 
