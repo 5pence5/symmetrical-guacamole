@@ -140,9 +140,16 @@ java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar -p implementation=<yourId>
 
 ---
 
+## Documentation
+
+- **[Assistant Guide](docs/assistant-guide.md)** - Comprehensive guide for AI assistants working with this codebase
+- **[Review History](docs/history/REVIEW_REPORT.md)** - Historical review report and issue resolutions
+
+---
+
 ## Licence
 
-Choose a permissive licence (e.g. Apache-2.0 or MIT) and add a LICENSE file at the repo root.
+Licensed under **Apache-2.0**. See [LICENSE](LICENSE) for full text.
 
 ---
 

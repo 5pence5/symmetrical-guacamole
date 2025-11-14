@@ -1,9 +1,9 @@
 # Maven build output
-/target/
+**/target/
 dependency-reduced-pom.xml
 
 # IntelliJ IDEA
-/.idea/
+.idea/
 *.iml
 
 # Eclipse
@@ -16,3 +16,6 @@ dependency-reduced-pom.xml
 
 # MacOS metadata
 .DS_Store
+
+# JVM crash logs
+hs_err_pid*
