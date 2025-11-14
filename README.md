@@ -1,5 +1,7 @@
 # Int128 for Java (with a simple build & benchmark helper)
 
+[![build](https://github.com/5pence5/symmetrical-guacamole/workflows/build/badge.svg)](https://github.com/5pence5/symmetrical-guacamole/actions)
+
 A compact library for exact 128-bit signed two's-complement integers in Java.
 It exposes a small plugin API so you can swap implementations (correctness-first baseline vs performance-oriented), and ships with a reference `Int128` (under `src/test/java`) used for verification.
 A minimal JMH harness is included purely to make building and comparing implementations easy — it's optional.
@@ -88,6 +90,14 @@ java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar \
 **Current built-in IDs:**
 - `twoLongsBaseline`
 - `fastLimb128`
+
+**Discovering available implementations programmatically:**
+```java
+import com.symguac.int128.bench.Int128BenchmarkRegistry;
+
+System.out.println(Int128BenchmarkRegistry.registeredIds());
+// Output: [twoLongsBaseline, fastLimb128]
+```
 
 ---
 
