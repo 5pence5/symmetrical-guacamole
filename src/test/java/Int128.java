@@ -357,21 +357,17 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         if (negA) { long[] t = negate128(aHi, aLo); aHi = t[0]; aLo = t[1]; }
         if (negB) { long[] t = negate128(bHi, bLo); bHi = t[0]; bLo = t[1]; }
 
-        long qHi, qLo;
+        Scratch s = TL_SCRATCH.get();
         if (cmpu128(aHi, aLo, bHi, bLo) < 0) {
-            qHi = 0L; qLo = 0L;
+            s.set(0L, 0L, aHi, aLo);
         } else if (bHi == 0L) {
-            long[] qr = udivrem_128by64(aHi, aLo, bLo);
-            qHi = qr[0]; qLo = qr[1];
+            udivrem_128by64(aHi, aLo, bLo, s);
         } else {
-            long[] qr = udivrem_128by128(aHi, aLo, bHi, bLo);
-            qHi = qr[0]; qLo = qr[1];
+            udivrem_128by128(aHi, aLo, bHi, bLo, s);
         }
 
-        if (negQ) {
-            long[] t = negate128(qHi, qLo);
-            qHi = t[0]; qLo = t[1];
-        }
+        long qHi = s.qHi, qLo = s.qLo;
+        if (negQ) { long[] t = negate128(qHi, qLo); qHi = t[0]; qLo = t[1]; }
         return new Int128(qHi, qLo);
     }
 
@@ -390,21 +386,17 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         if (negA) { long[] t = negate128(aHi, aLo); aHi = t[0]; aLo = t[1]; }
         if (negB) { long[] t = negate128(bHi, bLo); bHi = t[0]; bLo = t[1]; }
 
-        long rHi, rLo;
+        Scratch s = TL_SCRATCH.get();
         if (cmpu128(aHi, aLo, bHi, bLo) < 0) {
-            rHi = aHi; rLo = aLo;
+            s.set(0L, 0L, aHi, aLo);
         } else if (bHi == 0L) {
-            long[] qr = udivrem_128by64(aHi, aLo, bLo);
-            rHi = qr[2]; rLo = qr[3];
+            udivrem_128by64(aHi, aLo, bLo, s);
         } else {
-            long[] qr = udivrem_128by128(aHi, aLo, bHi, bLo);
-            rHi = qr[2]; rLo = qr[3];
+            udivrem_128by128(aHi, aLo, bHi, bLo, s);
         }
 
-        if (negR && (rHi != 0L || rLo != 0L)) {
-            long[] t = negate128(rHi, rLo);
-            rHi = t[0]; rLo = t[1];
-        }
+        long rHi = s.rHi, rLo = s.rLo;
+        if (negR && (rHi != 0L || rLo != 0L)) { long[] t = negate128(rHi, rLo); rHi = t[0]; rLo = t[1]; }
         return new Int128(rHi, rLo);
     }
 
@@ -432,59 +424,53 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         if (negA) { long[] t = negate128(aHi, aLo); aHi = t[0]; aLo = t[1]; }
         if (negB) { long[] t = negate128(bHi, bLo); bHi = t[0]; bLo = t[1]; }
 
-        long qHi, qLo, rHi, rLo;
+        Scratch s = TL_SCRATCH.get();
 
         // 1) Quick compare: if a < b, quotient=0, remainder=a
         if (cmpu128(aHi, aLo, bHi, bLo) < 0) {
-            qHi = 0L; qLo = 0L; rHi = aHi; rLo = aLo;
+            s.set(0L, 0L, aHi, aLo);
         } else if (bHi == 0L) {
             // 2) Fast 128/64 path
-            long[] qr = udivrem_128by64(aHi, aLo, bLo);
-            qHi = qr[0]; qLo = qr[1]; rHi = qr[2]; rLo = qr[3];
+            udivrem_128by64(aHi, aLo, bLo, s);
         } else {
             // 3) Optimised 128/128 (same degree) using 2‑limb method
-            long[] qr = udivrem_128by128(aHi, aLo, bHi, bLo);
-            qHi = qr[0]; qLo = qr[1]; rHi = qr[2]; rLo = qr[3];
+            udivrem_128by128(aHi, aLo, bHi, bLo, s);
         }
 
+        long qHi = s.qHi, qLo = s.qLo, rHi = s.rHi, rLo = s.rLo;
+
         // Repair signs
-        if (negQ) {
-            long[] t = negate128(qHi, qLo);
-            qHi = t[0]; qLo = t[1];
-        }
-        if (negR && (rHi != 0L || rLo != 0L)) {
-            long[] t = negate128(rHi, rLo);
-            rHi = t[0]; rLo = t[1];
-        }
+        if (negQ) { long[] t = negate128(qHi, qLo); qHi = t[0]; qLo = t[1]; }
+        if (negR && (rHi != 0L || rLo != 0L)) { long[] t = negate128(rHi, rLo); rHi = t[0]; rLo = t[1]; }
         return new Int128[] { new Int128(qHi, qLo), new Int128(rHi, rLo) };
     }
 
     /** Unsigned divide (quotient only). */
     public Int128 divideUnsigned(Int128 d) {
         if (d.isZero()) throw new ArithmeticException("divide by zero");
-        long[] qr;
+        Scratch s = TL_SCRATCH.get();
         if (cmpu128(this.hi, this.lo, d.hi, d.lo) < 0) {
-            qr = new long[] {0L, 0L, this.hi, this.lo};
+            s.set(0L, 0L, this.hi, this.lo);
         } else if (d.hi == 0L) {
-            qr = udivrem_128by64(this.hi, this.lo, d.lo);
+            udivrem_128by64(this.hi, this.lo, d.lo, s);
         } else {
-            qr = udivrem_128by128(this.hi, this.lo, d.hi, d.lo);
+            udivrem_128by128(this.hi, this.lo, d.hi, d.lo, s);
         }
-        return new Int128(qr[0], qr[1]);
+        return new Int128(s.qHi, s.qLo);
     }
 
     /** Unsigned remainder only. */
     public Int128 remainderUnsigned(Int128 d) {
         if (d.isZero()) throw new ArithmeticException("divide by zero");
-        long[] qr;
+        Scratch s = TL_SCRATCH.get();
         if (cmpu128(this.hi, this.lo, d.hi, d.lo) < 0) {
-            qr = new long[] {0L, 0L, this.hi, this.lo};
+            s.set(0L, 0L, this.hi, this.lo);
         } else if (d.hi == 0L) {
-            qr = udivrem_128by64(this.hi, this.lo, d.lo);
+            udivrem_128by64(this.hi, this.lo, d.lo, s);
         } else {
-            qr = udivrem_128by128(this.hi, this.lo, d.hi, d.lo);
+            udivrem_128by128(this.hi, this.lo, d.hi, d.lo, s);
         }
-        return new Int128(qr[2], qr[3]);
+        return new Int128(s.rHi, s.rLo);
     }
 
     // =========================================================================
@@ -542,6 +528,29 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         }
     }
 
+    /** Rotate left by {@code n} (0..127). */
+    public Int128 rotateLeft(int n) {
+        int s = n & 127;
+        if (s == 0) return this;
+        if (s < 64) {
+            long nhi = (hi << s) | (lo >>> (64 - s));
+            long nlo = (lo << s) | (hi >>> (64 - s));
+            return new Int128(nhi, nlo);
+        }
+        if (s == 64) {
+            return new Int128(lo, hi);
+        }
+        int k = s - 64;
+        long nhi = (lo << k) | (hi >>> (64 - k));
+        long nlo = (hi << k) | (lo >>> (64 - k));
+        return new Int128(nhi, nlo);
+    }
+
+    /** Rotate right by {@code n} (0..127). */
+    public Int128 rotateRight(int n) {
+        return rotateLeft(128 - (n & 127));
+    }
+
     // =========================================================================
     // Bitwise
     // =========================================================================
@@ -573,6 +582,26 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         if (bit < 64) return new Int128(this.hi, this.lo & ~(1L << bit));
         int b = bit - 64;
         return new Int128(this.hi & ~(1L << b), this.lo);
+    }
+
+    /** Count of set bits. */
+    public int bitCount() {
+        return Long.bitCount(hi) + Long.bitCount(lo);
+    }
+
+    /** Leading zeros of the two's-complement representation. */
+    public int numberOfLeadingZerosTwosComplement() {
+        if (hi >= 0) {
+            return (hi != 0L) ? Long.numberOfLeadingZeros(hi) : 64 + Long.numberOfLeadingZeros(lo);
+        }
+        long nHi = ~hi, nLo = ~lo;
+        return (nHi != 0L) ? Long.numberOfLeadingZeros(nHi) : 64 + Long.numberOfLeadingZeros(nLo);
+    }
+
+    /** Trailing zeros treating the value as unsigned. */
+    public int numberOfTrailingZerosUnsigned() {
+        if (lo != 0L) return Long.numberOfTrailingZeros(lo);
+        return 64 + Long.numberOfTrailingZeros(hi);
     }
 
     /**
@@ -625,9 +654,10 @@ public final class Int128 implements Comparable<Int128>, Serializable {
                 aHi = t[0]; aLo = t[1];
             }
 
-            long[] qr = udivrem_128by64(aHi, aLo, d); // [qHi, qLo, 0, r]
-            long qHi = qr[0], qLo = qr[1];
-            long r   = qr[3];
+            Scratch s = TL_SCRATCH.get();
+            udivrem_128by64(aHi, aLo, d, s); // [qHi, qLo, 0, r]
+            long qHi = s.qHi, qLo = s.qLo;
+            long r   = s.rLo;
 
             if (neg) {
                 // quotient sign: negate; remainder sign: same as dividend (negative), unless zero
@@ -727,6 +757,22 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         return new Int128(hi, lo);
     }
 
+    /** Little-endian 16-byte two's-complement array. */
+    public byte[] toBytesLE() {
+        byte[] a = new byte[16];
+        writeLongLE(a, 8, hi);
+        writeLongLE(a, 0, lo);
+        return a;
+    }
+
+    /** Build from little-endian two's-complement 16 bytes. */
+    public static Int128 fromBytesLE(byte[] a16) {
+        if (a16 == null || a16.length != 16) throw new IllegalArgumentException("Need exactly 16 bytes");
+        long lo = readLongLE(a16, 0);
+        long hi = readLongLE(a16, 8);
+        return new Int128(hi, lo);
+    }
+
     /** Put into a ByteBuffer as two consecutive longs (hi, lo). */
     public void putTo(ByteBuffer bb) { putToBE(bb); }
 
@@ -751,6 +797,30 @@ public final class Int128 implements Comparable<Int128>, Serializable {
             bb.order(ByteOrder.BIG_ENDIAN);
             long hi = bb.getLong();
             long lo = bb.getLong();
+            return new Int128(hi, lo);
+        } finally {
+            bb.order(old);
+        }
+    }
+
+    /** Put into a ByteBuffer using little-endian order. */
+    public void putToLE(ByteBuffer bb) {
+        ByteOrder old = bb.order();
+        try {
+            bb.order(ByteOrder.LITTLE_ENDIAN);
+            bb.putLong(lo).putLong(hi);
+        } finally {
+            bb.order(old);
+        }
+    }
+
+    /** Read from a ByteBuffer using little-endian order. */
+    public static Int128 getFromLE(ByteBuffer bb) {
+        ByteOrder old = bb.order();
+        try {
+            bb.order(ByteOrder.LITTLE_ENDIAN);
+            long lo = bb.getLong();
+            long hi = bb.getLong();
             return new Int128(hi, lo);
         } finally {
             bb.order(old);
@@ -805,16 +875,67 @@ public final class Int128 implements Comparable<Int128>, Serializable {
                ((long) (a[off + 7] & 0xFF));
     }
 
+    private static void writeLongLE(byte[] a, int off, long v) {
+        a[off    ] = (byte) v;
+        a[off + 1] = (byte) (v >>> 8);
+        a[off + 2] = (byte) (v >>> 16);
+        a[off + 3] = (byte) (v >>> 24);
+        a[off + 4] = (byte) (v >>> 32);
+        a[off + 5] = (byte) (v >>> 40);
+        a[off + 6] = (byte) (v >>> 48);
+        a[off + 7] = (byte) (v >>> 56);
+    }
+
+    private static long readLongLE(byte[] a, int off) {
+        return ((long) (a[off] & 0xFF)) |
+               ((long) (a[off + 1] & 0xFF) << 8) |
+               ((long) (a[off + 2] & 0xFF) << 16) |
+               ((long) (a[off + 3] & 0xFF) << 24) |
+               ((long) (a[off + 4] & 0xFF) << 32) |
+               ((long) (a[off + 5] & 0xFF) << 40) |
+               ((long) (a[off + 6] & 0xFF) << 48) |
+               ((long) (a[off + 7] & 0xFF) << 56);
+    }
+
     // =========================================================================
     // Internal unsigned helpers (64×64→128, 128/64 division, 128/128 division)
     // =========================================================================
 
+    private static final class Scratch {
+        long qHi, qLo, rHi, rLo;
+        void set(long qHi, long qLo, long rHi, long rLo) {
+            this.qHi = qHi;
+            this.qLo = qLo;
+            this.rHi = rHi;
+            this.rLo = rLo;
+        }
+    }
+
+    private static final ThreadLocal<Scratch> TL_SCRATCH = ThreadLocal.withInitial(Scratch::new);
+
+    private static final boolean USE_MH = hasMultiplyHigh();
+
+    private static boolean hasMultiplyHigh() {
+        String v = System.getProperty("java.specification.version", "8");
+        try {
+            int major = v.contains(".") ? Integer.parseInt(v.substring(v.indexOf('.') + 1)) : Integer.parseInt(v);
+            return major >= 9;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
     /** Lower 64 bits of x * y (wrap semantics). */
     private static long mulLo64(long x, long y) { return x * y; }
 
-    /** Upper 64 bits of x * y. Portable; swap to Math.multiplyHigh on JDK 9+. */
+    /** Upper 64 bits of x * y. Uses Math.multiplyHigh when available. */
     private static long mulHi64(long x, long y) {
-        // Portable 32‑bit split (JDK 8 compatible).
+        if (USE_MH) {
+            long hi = Math.multiplyHigh(x, y);
+            if (x < 0) hi += y;
+            if (y < 0) hi += x;
+            return hi;
+        }
         long x0 = x & 0xFFFF_FFFFL, x1 = x >>> 32;
         long y0 = y & 0xFFFF_FFFFL, y1 = y >>> 32;
         long p0 = x0 * y0;
@@ -842,42 +963,33 @@ public final class Int128 implements Comparable<Int128>, Serializable {
 
     /**
      * Fast unsigned 128/64 division.
-     * Input: (aHi:aLo) / v; returns [qHi, qLo, rHi=0, rLo].
-     *
-     * We compute:
-     *   qHi = (aHi / v), r = (aHi % v)
-     *   Then divide (r<<64 | aLo) / v → qLo and remainder.
+     * Input: (aHi:aLo) / v; writes quotient and remainder into {@code out}.
      */
-    private static long[] udivrem_128by64(long aHi, long aLo, long v) {
+    private static void udivrem_128by64(long aHi, long aLo, long v, Scratch out) {
         if (v == 0L) throw new ArithmeticException("divide by zero");
 
         long qHi = Long.divideUnsigned(aHi, v);
         long r   = Long.remainderUnsigned(aHi, v);
 
-        // Divide 128 (r:aLo) by 64 (v) to get qLo and rem
         long qLo = 0L;
         for (int i = 63; i >= 0; i--) {
             long bit = (aLo >>> i) & 1L;
-            long r2 = (r << 1) | bit;
-            // Handle overflow: if r >= 2^63, then r*2 overflows, and r*2 >= 2^64 > v
+            long r2  = (r << 1) | bit;
             if (r < 0L || Long.compareUnsigned(r2, v) >= 0) {
-                r = r2 - v;
+                r   = r2 - v;
                 qLo |= (1L << i);
             } else {
                 r = r2;
             }
         }
-        // r is remainder (< v)
-        return new long[] { qHi, qLo, 0L, r };
+        out.set(qHi, qLo, 0L, r);
     }
 
     /**
      * Optimised unsigned 128/128 division for same‑degree operands (bHi != 0).
      * Uses normalised two‑limb division (Knuth‑style) with bounded corrections (at most 2).
-     *
-     * Returns [qHi=0, qLo, rHi, rLo].
      */
-    private static long[] udivrem_128by128(long aHi, long aLo, long bHi, long bLo) {
+    private static void udivrem_128by128(long aHi, long aLo, long bHi, long bLo, Scratch out) {
         // Preconditions: (aHi:aLo) >= (bHi:bLo), and bHi != 0.
 
         // 1) Normalise so that the top bit of divisor is 1.
@@ -969,8 +1081,7 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         final long rHiDen = (s == 0) ? rMid : (rMid >>> s);
         final long rLoDen = (s == 0) ? rLo  : (rLo >>> s) | (rMid << (64 - s));
 
-        // Quotient is one limb: qHi = 0, qLo = q
-        return new long[] { 0L, q, rHiDen, rLoDen };
+        out.set(0L, q, rHiDen, rLoDen);
     }
 
     // =========================================================================
