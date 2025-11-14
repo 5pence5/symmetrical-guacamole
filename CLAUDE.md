@@ -25,7 +25,7 @@ This repository hosts **experimental infrastructure for high-performance 128-bit
 ```
 symmetrical-guacamole/
 ├── pom.xml                          # Maven configuration (Java 17, JMH dependencies)
-├── Readme                           # User-facing documentation
+├── README.md                        # User-facing documentation
 ├── CLAUDE.md                        # This file - AI assistant guide
 └── src/
     ├── main/java/com/symguac/int128/
@@ -160,6 +160,20 @@ All implementations represent 128-bit values as **two 64-bit signed longs**:
 - Decimal and hexadecimal parsing
 - Self-contained, immutable, thread-safe
 
+### Division Support Matrix
+
+Quick reference for which operations are supported in each implementation:
+
+| Implementation | Add/Sub/Mul | 128÷64 | 128÷128 | Notes |
+|----------------|-------------|--------|---------|-------|
+| `twoLongsBaseline` | ✅ | ✅ | ✅ | Uses `BigInteger` in arithmetic paths; easy to trust, not the fastest. |
+| `fastLimb128` | ✅ | ✅ | ⚠️ | Fast 128÷64 path. 128÷128 currently not implemented; use baseline for `/` and `%` or port division from reference `Int128`. |
+| `Int128` (tests) | ✅ | ✅ | ✅ | Lives under `src/test/java/`; not part of public API but used to verify behavior. |
+
+**Recommendation:** If your workload requires full 128÷128 division in the high-performance path, either:
+- Use `twoLongsBaseline` for division operations (hybrid approach)
+- Port the tested division algorithm from `src/test/java/Int128.java` into the fast implementation
+
 ---
 
 ## Development Workflow
@@ -187,12 +201,12 @@ java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar
 java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar Int128ArithmeticBenchmark.additionWithReuse
 
 # Method 4: Specific implementation
-java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar -p implId=fastLimb128
+java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar -p implementation=fastLimb128
 ```
 
 ### Git Workflow
 
-**Branch:** `claude/claude-md-mhxvjslwyf4nc3jn-012qHEDUHS9YtxMBLGDyY4gV`
+**Current Branch:** Check `git branch --show-current` for active feature branch
 
 **Commit Message Style:**
 - Clear, concise descriptions
@@ -203,7 +217,8 @@ java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar -p implId=fastLimb128
 
 **Push Command:**
 ```bash
-git push -u origin claude/claude-md-mhxvjslwyf4nc3jn-012qHEDUHS9YtxMBLGDyY4gV
+# Push to current feature branch (always starts with 'claude/')
+git push -u origin $(git branch --show-current)
 ```
 
 ---
