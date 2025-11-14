@@ -342,10 +342,64 @@ public final class Int128 implements Comparable<Int128>, Serializable {
     // =========================================================================
 
     /** Signed division (wrap semantics). Throws ArithmeticException on /0. */
-    public Int128 div(Int128 d) { return divRem(d)[0]; }
+    public Int128 div(Int128 divisor) {
+        if (divisor.isZero()) throw new ArithmeticException("divide by zero");
+        boolean negA = this.isNegative(), negB = divisor.isNegative();
+        boolean negQ = negA ^ negB;
+
+        long aHi = this.hi, aLo = this.lo;
+        long bHi = divisor.hi, bLo = divisor.lo;
+
+        if (negA) { long[] t = negate128(aHi, aLo); aHi = t[0]; aLo = t[1]; }
+        if (negB) { long[] t = negate128(bHi, bLo); bHi = t[0]; bLo = t[1]; }
+
+        long qHi, qLo;
+        if (cmpu128(aHi, aLo, bHi, bLo) < 0) {
+            qHi = 0L; qLo = 0L;
+        } else if (bHi == 0L) {
+            long[] qr = udivrem_128by64(aHi, aLo, bLo);
+            qHi = qr[0]; qLo = qr[1];
+        } else {
+            long[] qr = udivrem_128by128(aHi, aLo, bHi, bLo);
+            qHi = qr[0]; qLo = qr[1];
+        }
+
+        if (negQ) {
+            long[] t = negate128(qHi, qLo);
+            qHi = t[0]; qLo = t[1];
+        }
+        return new Int128(qHi, qLo);
+    }
 
     /** Signed remainder. Throws ArithmeticException on /0. */
-    public Int128 rem(Int128 d) { return divRem(d)[1]; }
+    public Int128 rem(Int128 divisor) {
+        if (divisor.isZero()) throw new ArithmeticException("divide by zero");
+        boolean negA = this.isNegative(), negB = divisor.isNegative();
+        boolean negR = negA;
+
+        long aHi = this.hi, aLo = this.lo;
+        long bHi = divisor.hi, bLo = divisor.lo;
+
+        if (negA) { long[] t = negate128(aHi, aLo); aHi = t[0]; aLo = t[1]; }
+        if (negB) { long[] t = negate128(bHi, bLo); bHi = t[0]; bLo = t[1]; }
+
+        long rHi, rLo;
+        if (cmpu128(aHi, aLo, bHi, bLo) < 0) {
+            rHi = aHi; rLo = aLo;
+        } else if (bHi == 0L) {
+            long[] qr = udivrem_128by64(aHi, aLo, bLo);
+            rHi = qr[2]; rLo = qr[3];
+        } else {
+            long[] qr = udivrem_128by128(aHi, aLo, bHi, bLo);
+            rHi = qr[2]; rLo = qr[3];
+        }
+
+        if (negR && (rHi != 0L || rLo != 0L)) {
+            long[] t = negate128(rHi, rLo);
+            rHi = t[0]; rLo = t[1];
+        }
+        return new Int128(rHi, rLo);
+    }
 
     /**
      * Signed div/rem. Internally uses unsigned algorithms on magnitudes and repairs signs.
