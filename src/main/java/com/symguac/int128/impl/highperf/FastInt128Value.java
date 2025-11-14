@@ -186,10 +186,7 @@ public final class FastInt128Value implements Int128Value, Comparable<FastInt128
      */
     public int signum() {
         if (high == 0L) {
-            if (low == 0L) {
-                return 0;
-            }
-            return low < 0 ? -1 : 1;
+            return Long.compareUnsigned(low, 0L) == 0 ? 0 : 1;
         }
         return high < 0 ? -1 : 1;
     }
@@ -205,7 +202,11 @@ public final class FastInt128Value implements Int128Value, Comparable<FastInt128
      * Checks whether the current value is strictly negative.
      */
     public boolean isNegative() {
-        return high < 0L || (high == 0L && low < 0L);
+        if (high == 0L) {
+            // When the high word is zero the magnitude determines whether the value is zero, but never negative.
+            return false;
+        }
+        return high < 0L;
     }
 
     /**
@@ -958,7 +959,7 @@ public final class FastInt128Value implements Int128Value, Comparable<FastInt128
         }
 
         public void absoluteValue() {
-            if (this.high < 0 || (this.high == 0L && this.low < 0L)) {
+            if (this.high < 0L) {
                 negate();
             }
         }
