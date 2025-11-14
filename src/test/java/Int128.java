@@ -226,7 +226,7 @@ public final class Int128 implements Comparable<Int128>, Serializable {
     /** Parse hexadecimal with optional sign and optional "0x"/"0X" prefix (e.g., "-0xFF"). */
     public static Int128 parseHex(String s) {
         if (s == null) throw new NullPointerException("s");
-        String t = stripNumericSeparatorsAndTrim(s);   // <— change: strip underscores
+        String t = stripNumericSeparatorsAndTrim(s);
         if (t.isEmpty()) throw new NumberFormatException("Empty hex string");
 
         boolean neg = false;
@@ -341,7 +341,10 @@ public final class Int128 implements Comparable<Int128>, Serializable {
     // Division & remainder (fast 128/64 path, optimised 128/128 path)
     // =========================================================================
 
-    /** Signed division (wrap semantics). Throws ArithmeticException on /0. */
+    /**
+     * Signed division (wrap semantics). Throws ArithmeticException on /0.
+     * <p>Quotient truncates toward zero (matches Java's {@code /} semantics).</p>
+     */
     public Int128 div(Int128 divisor) {
         if (divisor.isZero()) throw new ArithmeticException("divide by zero");
         boolean negA = this.isNegative(), negB = divisor.isNegative();
@@ -371,7 +374,10 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         return new Int128(qHi, qLo);
     }
 
-    /** Signed remainder. Throws ArithmeticException on /0. */
+    /**
+     * Signed remainder. Throws ArithmeticException on /0.
+     * <p>Remainder retains the dividend's sign (matches Java's {@code %} semantics).</p>
+     */
     public Int128 rem(Int128 divisor) {
         if (divisor.isZero()) throw new ArithmeticException("divide by zero");
         boolean negA = this.isNegative(), negB = divisor.isNegative();
@@ -403,6 +409,7 @@ public final class Int128 implements Comparable<Int128>, Serializable {
 
     /**
      * Signed div/rem. Internally uses unsigned algorithms on magnitudes and repairs signs.
+     * <p>Quotient truncates toward zero and remainder carries the dividend's sign (Java semantics).</p>
      * <p>Fast paths:</p>
      * <ul>
      *   <li>divisor fits in 64 bits → 128/64 algorithm</li>

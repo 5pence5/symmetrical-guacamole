@@ -492,6 +492,11 @@ public class Int128Test {
             return a.equals(Int128.valueOf(255));
         });
 
+        test("parseHex with underscores", () -> {
+            Int128 a = Int128.parseHex("0xFFFF_FFFF_FFFF_FFFF");
+            return a.equals(Int128.of(0L, 0xFFFF_FFFF_FFFF_FFFFL));
+        });
+
         test("parseHex negative", () -> {
             Int128 a = Int128.parseHex("-0x10");
             return a.equals(Int128.valueOf(-16));
