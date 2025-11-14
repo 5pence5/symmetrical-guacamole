@@ -1,0 +1,23 @@
+name: build
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: maven
+      - name: Build & unit tests
+        run: mvn -q -B -e -Dstyle.color=always clean verify
+      - name: JMH smoke (10ms/bench, 1 fork)
+        run: |
+          mvn -q -B -DskipTests package
+          java -jar target/int128-0.1.0-SNAPSHOT-shaded.jar \
+            -bm thrpt -f 1 -wi 1 -i 1 -r 100ms \
+            Int128ArithmeticBenchmark.additionWithReuse -p implementation=twoLongsBaseline
