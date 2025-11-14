@@ -1,6 +1,7 @@
 import java.io.Serializable;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 /**
  * Int128 — High‑performance, exact, signed 128‑bit two's‑complement integer for latency‑sensitive workloads.
@@ -31,7 +32,7 @@ import java.nio.ByteBuffer;
  *       avoids bit‑at‑a‑time loops and uses at most a couple of corrective steps.</li>
  *   <li>JDK: no reliance on {@code Math.multiplyHigh}; the 64×64→128 core uses a portable 32‑bit split that
  *       the JIT optimises well on both x86_64 and AArch64. If you standardise on JDK 9+, you can trivially
- *       wire {@code Math.multiplyHigh} into {@code mul64to128} (comment included where to switch).</li>
+ *       wire {@code Math.multiplyHigh} into {@code mulHi64} (comment included where to switch).</li>
  * </ul>
  */
 public final class Int128 implements Comparable<Int128>, Serializable {
@@ -727,13 +728,33 @@ public final class Int128 implements Comparable<Int128>, Serializable {
     }
 
     /** Put into a ByteBuffer as two consecutive longs (hi, lo). */
-    public void putTo(ByteBuffer bb) {
-        bb.putLong(hi).putLong(lo);
-    }
+    public void putTo(ByteBuffer bb) { putToBE(bb); }
 
     /** Read from a ByteBuffer (hi, lo). */
-    public static Int128 getFrom(ByteBuffer bb) {
-        return new Int128(bb.getLong(), bb.getLong());
+    public static Int128 getFrom(ByteBuffer bb) { return getFromBE(bb); }
+
+    /** Put into a ByteBuffer using big-endian order. */
+    public void putToBE(ByteBuffer bb) {
+        ByteOrder old = bb.order();
+        try {
+            bb.order(ByteOrder.BIG_ENDIAN);
+            bb.putLong(hi).putLong(lo);
+        } finally {
+            bb.order(old);
+        }
+    }
+
+    /** Read from a ByteBuffer using big-endian order. */
+    public static Int128 getFromBE(ByteBuffer bb) {
+        ByteOrder old = bb.order();
+        try {
+            bb.order(ByteOrder.BIG_ENDIAN);
+            long hi = bb.getLong();
+            long lo = bb.getLong();
+            return new Int128(hi, lo);
+        } finally {
+            bb.order(old);
+        }
     }
 
     // BigInteger bridging for string I/O only
@@ -804,25 +825,6 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         return p3 + (p1 >>> 32) + (p2 >>> 32) + (mid >>> 32);
     }
 
-    /** Unsigned 64×64 → 128 product; returns [hi, lo]. */
-    private static long[] mul64to128(long x, long y) {
-        // Portable 32‑bit split. For JDK9+ you may switch to Math.multiplyHigh(x,y) here.
-        long x0 = x & 0xFFFF_FFFFL;
-        long x1 = x >>> 32;
-        long y0 = y & 0xFFFF_FFFFL;
-        long y1 = y >>> 32;
-
-        long p0 = x0 * y0;            // 64‑bit
-        long p1 = x0 * y1;            // 64‑bit
-        long p2 = x1 * y0;            // 64‑bit
-        long p3 = x1 * y1;            // 64‑bit
-
-        long mid = (p1 & 0xFFFF_FFFFL) + (p2 & 0xFFFF_FFFFL) + (p0 >>> 32);
-        long hi  = p3 + (p1 >>> 32) + (p2 >>> 32) + (mid >>> 32);
-        long lo  = (p0 & 0xFFFF_FFFFL) | (mid << 32);
-        return new long[] { hi, lo };
-    }
-
     /** 128‑bit unsigned compare: returns -1, 0, +1. */
     private static int cmpu128(long aHi, long aLo, long bHi, long bLo) {
         int ch = Long.compareUnsigned(aHi, bHi);
@@ -870,28 +872,6 @@ public final class Int128 implements Comparable<Int128>, Serializable {
     }
 
     /**
-     * Helper: unsigned 96-bit / 64-bit division using bit-by-bit loop.
-     * Divides (rHi:rLo) / d where rHi < d.
-     * Returns [quotient, remainder].
-     */
-    private static long[] udivrem_96by64_bitloop(long rHi, long rLo, long d) {
-        long q = 0L;
-        long r = rHi;
-        for (int i = 63; i >= 0; i--) {
-            long bit = (rLo >>> i) & 1L;
-            long r2 = (r << 1) | bit;
-            // Handle overflow: if r >= 2^63, then r*2 overflows, and r*2 >= 2^64 > d
-            if (r < 0L || Long.compareUnsigned(r2, d) >= 0) {
-                r = r2 - d;
-                q |= (1L << i);
-            } else {
-                r = r2;
-            }
-        }
-        return new long[] { q, r };
-    }
-
-    /**
      * Optimised unsigned 128/128 division for same‑degree operands (bHi != 0).
      * Uses normalised two‑limb division (Knuth‑style) with bounded corrections (at most 2).
      *
@@ -914,10 +894,19 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         long qHi_est = Long.divideUnsigned(n2, d1);
         long rem1    = Long.remainderUnsigned(n2, d1);
 
-        // Finish 128/64 division of (rem1:n1)/d1 using the existing 96/64 helper.
-        long[] ql_r  = udivrem_96by64_bitloop(rem1, n1, d1);
-        long q    = ql_r[0];
-        long rhat = ql_r[1];
+        // Finish 128/64 division of (rem1:n1)/d1 using inline 96/64 bit loop.
+        long q = 0L;
+        long rhat = rem1;
+        for (int i = 63; i >= 0; i--) {
+            long bit = (n1 >>> i) & 1L;
+            long r2  = (rhat << 1) | bit;
+            if (rhat < 0L || Long.compareUnsigned(r2, d1) >= 0) {
+                rhat = r2 - d1;
+                q |= (1L << i);
+            } else {
+                rhat = r2;
+            }
+        }
 
         // Reduce q from >= 2^64 to < 2^64 if needed (bounded; at most one iteration).
         while (qHi_est != 0L) {
@@ -962,10 +951,12 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         long rMid = n1 - qD_hi - borrow1;
         long borrow2 = (Long.compareUnsigned(n1, qD_hi) < 0 || (n1 == qD_hi && borrow1 != 0)) ? 1L : 0L;
 
-        long rHi = n2 - qD_top - borrow2;
+        // Determine underflow explicitly in unsigned arithmetic.
+        boolean under =
+                (Long.compareUnsigned(n2, qD_top) < 0) ||
+                (n2 == qD_top && borrow2 != 0);
 
-        // If underflowed (top‑limb borrow), add D back once and decrement q.
-        if (rHi < 0) {
+        if (under) {
             long rLo2 = rLo + d0;
             long carry = Long.compareUnsigned(rLo2, rLo) < 0 ? 1L : 0L;
             long rMid2 = rMid + d1 + carry;
