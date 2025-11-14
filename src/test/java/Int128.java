@@ -837,112 +837,88 @@ public final class Int128 implements Comparable<Int128>, Serializable {
      * Returns [qHi=0, qLo, rHi, rLo].
      */
     private static long[] udivrem_128by128(long aHi, long aLo, long bHi, long bLo) {
-        // Preconditions in caller: (aHi:aLo) >= (bHi:bLo), and bHi != 0.
-        // Normalise so that the top bit of divisor is 1.
-        final int s = Long.numberOfLeadingZeros(bHi);
+        // Preconditions: (aHi:aLo) >= (bHi:bLo), and bHi != 0.
+
+        // 1) Normalise so that the top bit of divisor is 1.
+        final int s  = Long.numberOfLeadingZeros(bHi);
         final long d1 = (s == 0) ? bHi : (bHi << s) | (bLo >>> (64 - s));
         final long d0 = (s == 0) ? bLo : (bLo << s);
 
-        // Normalize dividend, tracking overflow from aHi
-        final long n2 = (s == 0) ? 0L : (aHi >>> (64 - s)); // overflow bits
+        // Normalise dividend, tracking overflow from aHi
+        final long n2 = (s == 0) ? 0L  : (aHi >>> (64 - s));
         final long n1 = (s == 0) ? aHi : (aHi << s) | (aLo >>> (64 - s));
         final long n0 = (s == 0) ? aLo : (aLo << s);
 
-        // Trial quotient q̂ = floor((n2*B² + n1*B + n0) / d1)  (B = 2^64).
-        // Per Knuth, we use the top 2 limbs: q̂ = floor((n2*B + n1) / d1).
+        // 2) Trial quotient using the top two limbs (Knuth D2/D3).
         long qHi_est = Long.divideUnsigned(n2, d1);
         long rem1    = Long.remainderUnsigned(n2, d1);
 
-        // Divide (rem1:n1) by d1 to finish the 128/64 division
+        // Finish 128/64 division of (rem1:n1)/d1 using the existing 96/64 helper.
         long[] ql_r  = udivrem_96by64_bitloop(rem1, n1, d1);
         long q    = ql_r[0];
         long rhat = ql_r[1];
 
-        // Per Knuth Algorithm D step D3: loop while (q >= B OR q*d0 > rhat*B) AND rhat < B.
-        // First bring q down from >= 2^64 to < 2^64 if needed.
+        // Reduce q from >= 2^64 to < 2^64 if needed (bounded; at most one iteration).
         while (qHi_est != 0L) {
-            // Decrement the 128-bit quotient (qHi_est:q)
-            if (q == 0L) {
-                qHi_est--;
-                q = 0xFFFF_FFFF_FFFF_FFFFL;
-            } else {
-                q--;
-            }
-            // Increment r̂ by d1
-            long oldRhat = rhat;
+            if (q == 0L) { qHi_est--; q = 0xFFFF_FFFF_FFFF_FFFFL; }
+            else         { q--; }
+            long oldR = rhat;
             rhat = rhat + d1;
-            // If r̂ overflowed (r̂ >= B), stop per Knuth
-            if (Long.compareUnsigned(rhat, oldRhat) < 0) {
-                break;
-            }
+            if (Long.compareUnsigned(rhat, oldR) < 0) break; // overflow => stop
         }
 
-        // Now q < 2^64. Apply standard Knuth corrections (while q*d0 > rhat*B + n0 and rhat < B).
-        // At most 2 iterations needed per Knuth's theorem.
+        // 3) Knuth corrections: while q*d0 > rhat*B + n0, decrement q and add d1 to rhat (≤ 2 iterations).
         for (int corrections = 0; corrections < 2; corrections++) {
-            long[] qd0 = mul64to128(q, d0);
-            // Compare qd0 (hi:lo) against (rhat:n0) - this is the critical fix
-            boolean needsCorrection = (Long.compareUnsigned(qd0[0], rhat) > 0) ||
-                                      (qd0[0] == rhat && Long.compareUnsigned(qd0[1], n0) > 0);
-            if (!needsCorrection) {
-                break;
-            }
+            long qd0_lo = mulLo64(q, d0);
+            long qd0_hi = mulHi64(q, d0);
+
+            boolean needsCorrection =
+                (Long.compareUnsigned(qd0_hi, rhat) > 0) ||
+                (qd0_hi == rhat && Long.compareUnsigned(qd0_lo, n0) > 0);
+
+            if (!needsCorrection) break;
+
             q--;
-            long oldRhat = rhat;
+            long oldR = rhat;
             rhat = rhat + d1;
-            // If rhat overflowed, stop
-            if (Long.compareUnsigned(rhat, oldRhat) < 0) {
-                break;
-            }
+            if (Long.compareUnsigned(rhat, oldR) < 0) break; // overflow => stop
         }
 
-        // Now subtract q * D from the normalised numerator (n2:n1:n0).
-        long[] qD = mul128by64to192(d1, d0, q); // [top, hi, lo]
-        // Since we have a 3-limb dividend (n2:n1:n0), we do a 3-limb subtraction.
-        long rLo = n0 - qD[2];
-        long borrow1 = Long.compareUnsigned(n0, qD[2]) < 0 ? 1L : 0L;
-        long rMid = n1 - qD[1] - borrow1;
-        long borrow2 = (Long.compareUnsigned(n1, qD[1]) < 0 || (n1 == qD[1] && borrow1 != 0)) ? 1L : 0L;
-        long rHi = n2 - qD[0] - borrow2;
+        // 4) Subtract q * D from normalised numerator (n2:n1:n0), inline 192‑bit multiply.
+        // qD = (d1:d0) * q  => top, hi, lo
+        long qD_lo    = mulLo64(d0, q);
+        long qD_loHi  = mulHi64(d0, q);
+        long qD_hiLo  = mulLo64(d1, q);
+        long qD_hiHi  = mulHi64(d1, q);
 
-        // If subtraction underflowed from the top limb, fix by adding D back and decrementing q.
-        // After 3-limb subtraction in two's complement, rHi < 0 is sufficient to detect underflow
-        boolean under = (rHi < 0);
+        long qD_hi  = qD_loHi + qD_hiLo;
+        long qD_top = qD_hiHi + (Long.compareUnsigned(qD_hi, qD_loHi) < 0 ? 1L : 0L);
 
-        if (under) {
-            // r += D  (normalised), adding to the lower 2 limbs
+        // 3‑limb subtraction: (n2:n1:n0) - (qD_top:qD_hi:qD_lo)
+        long rLo = n0 - qD_lo;
+        long borrow1 = Long.compareUnsigned(n0, qD_lo) < 0 ? 1L : 0L;
+
+        long rMid = n1 - qD_hi - borrow1;
+        long borrow2 = (Long.compareUnsigned(n1, qD_hi) < 0 || (n1 == qD_hi && borrow1 != 0)) ? 1L : 0L;
+
+        long rHi = n2 - qD_top - borrow2;
+
+        // If underflowed (top‑limb borrow), add D back once and decrement q.
+        if (rHi < 0) {
             long rLo2 = rLo + d0;
             long carry = Long.compareUnsigned(rLo2, rLo) < 0 ? 1L : 0L;
             long rMid2 = rMid + d1 + carry;
             rLo = rLo2;
             rMid = rMid2;
-            // rHi stays the same since we only add to the lower 128 bits
-            q--; // one-step correction is sufficient
+            q--;
         }
 
-        // Denormalise remainder by shifting right 's' bits.  Use rMid:rLo as the 128-bit remainder.
+        // 5) Denormalise remainder by shifting right s bits; use rMid:rLo as the 128‑bit remainder.
         final long rHiDen = (s == 0) ? rMid : (rMid >>> s);
-        final long rLoDen = (s == 0) ? rLo : (rLo >>> s) | (rMid << (64 - s));
+        final long rLoDen = (s == 0) ? rLo  : (rLo >>> s) | (rMid << (64 - s));
 
-        // Quotient fits in one limb: qHi = 0, qLo = q.
+        // Quotient is one limb: qHi = 0, qLo = q
         return new long[] { 0L, q, rHiDen, rLoDen };
-    }
-
-    /**
-     * Multiply 128‑bit value (aHi:aLo) by 64‑bit scalar q to 192‑bit product.
-     * Returns [top (carry), hi, lo].
-     */
-    private static long[] mul128by64to192(long aHi, long aLo, long q) {
-        long[] p0 = mul64to128(aLo, q); // [hi0, lo0]
-        long lo = p0[1];
-        long mid = p0[0];
-
-        long[] p1 = mul64to128(aHi, q); // [hi1, lo1]  (i.e., 128 bits)
-
-        long hi = mid + p1[1];
-        long carry = Long.compareUnsigned(hi, mid) < 0 ? 1L : 0L;
-        long top = p1[0] + carry;
-        return new long[] { top, hi, lo };
     }
 
     // =========================================================================
