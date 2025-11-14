@@ -226,7 +226,7 @@ public final class Int128 implements Comparable<Int128>, Serializable {
     /** Parse hexadecimal with optional sign and optional "0x"/"0X" prefix (e.g., "-0xFF"). */
     public static Int128 parseHex(String s) {
         if (s == null) throw new NullPointerException("s");
-        String t = s.trim();
+        String t = stripNumericSeparatorsAndTrim(s);   // <— change: strip underscores
         if (t.isEmpty()) throw new NumberFormatException("Empty hex string");
 
         boolean neg = false;
