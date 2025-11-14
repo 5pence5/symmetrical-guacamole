@@ -307,21 +307,16 @@ public final class Int128 implements Comparable<Int128>, Serializable {
 
     /**
      * 128×128 → low 128 bits (wrap semantics).
-     * <p>Implements (hi,lo) = a*b mod 2^128 using 64×64→128 core and cross terms.</p>
+     * <p>Implements (hi,lo) = a*b mod 2^128 using alloc‑free 64×64 core and cross terms.</p>
      */
     public Int128 mul(Int128 b) {
-        final long aLo = this.lo, aHi = this.hi;
-        final long bLo = b.lo,   bHi = b.hi;
+        long aLo = this.lo, aHi = this.hi;
+        long bLo = b.lo,   bHi = b.hi;
 
-        long[] p0 = mul64to128(aLo, bLo); // low×low
-        long lo0 = p0[1];
-        long hi0 = p0[0];
-
-        long cross1_lo = aLo * bHi; // 64‑bit low limb of aLo*bHi (equivalent to <<64 later)
-        long cross2_lo = aHi * bLo; // 64‑bit low limb of aHi*bLo
-
-        long lo = lo0;
-        long hi = hi0 + cross1_lo + cross2_lo;
+        long lo = mulLo64(aLo, bLo);
+        long hi = mulHi64(aLo, bLo);
+        hi += mulLo64(aLo, bHi);
+        hi += mulLo64(aHi, bLo);
         return new Int128(hi, lo);
     }
 
@@ -331,13 +326,8 @@ public final class Int128 implements Comparable<Int128>, Serializable {
         if (k == 1)  return this;
         if (k == -1) return this.negate();
 
-        long[] p0 = mul64to128(this.lo, k);
-        long lo0 = p0[1];
-        long hi0 = p0[0];
-
-        long cross = this.hi * k;
-        long lo = lo0;
-        long hi = hi0 + cross;
+        long lo = mulLo64(this.lo, k);
+        long hi = mulHi64(this.lo, k) + mulLo64(this.hi, k);
         return new Int128(hi, lo);
     }
 
@@ -736,6 +726,22 @@ public final class Int128 implements Comparable<Int128>, Serializable {
     // =========================================================================
     // Internal unsigned helpers (64×64→128, 128/64 division, 128/128 division)
     // =========================================================================
+
+    /** Lower 64 bits of x * y (wrap semantics). */
+    private static long mulLo64(long x, long y) { return x * y; }
+
+    /** Upper 64 bits of x * y. Portable; swap to Math.multiplyHigh on JDK 9+. */
+    private static long mulHi64(long x, long y) {
+        // Portable 32‑bit split (JDK 8 compatible).
+        long x0 = x & 0xFFFF_FFFFL, x1 = x >>> 32;
+        long y0 = y & 0xFFFF_FFFFL, y1 = y >>> 32;
+        long p0 = x0 * y0;
+        long p1 = x0 * y1;
+        long p2 = x1 * y0;
+        long p3 = x1 * y1;
+        long mid = (p1 & 0xFFFF_FFFFL) + (p2 & 0xFFFF_FFFFL) + (p0 >>> 32);
+        return p3 + (p1 >>> 32) + (p2 >>> 32) + (mid >>> 32);
+    }
 
     /** Unsigned 64×64 → 128 product; returns [hi, lo]. */
     private static long[] mul64to128(long x, long y) {
