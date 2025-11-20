@@ -44,6 +44,66 @@ public final class FastInt128Value implements Int128Value, Comparable<FastInt128
     /** Minimum representable signed 128-bit value. */
     public static final FastInt128Value MIN_VALUE = new FastInt128Value(Long.MIN_VALUE, 0L);
 
+    /** Precomputed powers of 10 for quick lookups (10^0 .. 10^38). */
+    private static final FastInt128Value[] TEN_POW = initTenPowTable();
+    /** Precomputed int-sized powers of 10 used by decimal helpers (10^0 .. 10^9). */
+    private static final int[] TEN_POW_INT = {
+            1,
+            10,
+            100,
+            1_000,
+            10_000,
+            100_000,
+            1_000_000,
+            10_000_000,
+            100_000_000,
+            1_000_000_000
+    };
+
+    private static FastInt128Value[] initTenPowTable() {
+        return new FastInt128Value[] {
+                ONE,
+                new FastInt128Value(0L, 10L),
+                new FastInt128Value(0L, 100L),
+                new FastInt128Value(0L, 1000L),
+                new FastInt128Value(0L, 10000L),
+                new FastInt128Value(0L, 100000L),
+                new FastInt128Value(0L, 1000000L),
+                new FastInt128Value(0L, 10000000L),
+                new FastInt128Value(0L, 100000000L),
+                new FastInt128Value(0L, 1000000000L),
+                new FastInt128Value(0L, 10000000000L),
+                new FastInt128Value(0L, 100000000000L),
+                new FastInt128Value(0L, 1000000000000L),
+                new FastInt128Value(0L, 10000000000000L),
+                new FastInt128Value(0L, 100000000000000L),
+                new FastInt128Value(0L, 1000000000000000L),
+                new FastInt128Value(0L, 10000000000000000L),
+                new FastInt128Value(0L, 100000000000000000L),
+                new FastInt128Value(0L, 1000000000000000000L),
+                new FastInt128Value(0L, -8446744073709551616L),
+                new FastInt128Value(5L, 7766279631452241920L),
+                new FastInt128Value(54L, 3875820019684212736L),
+                new FastInt128Value(542L, 1864712049423024128L),
+                new FastInt128Value(5421L, 200376420520689664L),
+                new FastInt128Value(54210L, 2003764205206896640L),
+                new FastInt128Value(542101L, 1590897978359414784L),
+                new FastInt128Value(5421010L, -2537764290115403776L),
+                new FastInt128Value(54210108L, -6930898827444486144L),
+                new FastInt128Value(542101086L, 4477988020393345024L),
+                new FastInt128Value(5421010862L, 7886392056514347008L),
+                new FastInt128Value(54210108624L, 5076944270305263616L),
+                new FastInt128Value(542101086242L, -4570789518076018688L),
+                new FastInt128Value(5421010862427L, -8814407033341083648L),
+                new FastInt128Value(54210108624275L, 4089650035136921600L),
+                new FastInt128Value(542101086242752L, 4003012203950112768L),
+                new FastInt128Value(5421010862427522L, 3136633892082024448L),
+                new FastInt128Value(54210108624275221L, -5527149226598858752L),
+                new FastInt128Value(542101086242752217L, 68739955140067328L),
+                new FastInt128Value(5421010862427522170L, 687399551400673280L)
+        };
+    }
+
     /** Low bits of the number (least significant). */
     private final long low;
     /** High bits of the number (most significant). */
@@ -1333,6 +1393,14 @@ public final class FastInt128Value implements Int128Value, Comparable<FastInt128
         return (high == 0L && low >= 0L) || (high == -1L && low < 0L);
     }
 
+    /** Returns {@code 10^exponent} for {@code 0 <= exponent <= 38}. */
+    public static FastInt128Value tenPow(int exponent) {
+        if (exponent < 0 || exponent >= TEN_POW.length) {
+            throw new IllegalArgumentException("exponent out of range: " + exponent);
+        }
+        return TEN_POW[exponent];
+    }
+
     /**
      * Returns {@code true} if the magnitude is a multiple of {@code 10^n}.
      */
@@ -1341,14 +1409,19 @@ public final class FastInt128Value implements Int128Value, Comparable<FastInt128
             throw new IllegalArgumentException("power must be non-negative");
         }
         FastInt128Value value = abs();
-        for (int i = 0; i < n; i++) {
-            DivisionResult div = divideUnsignedByInt(value.high, value.low, 10);
+        while (n >= DECIMAL_BASE_POWER) {
+            DivisionResult div = divideUnsignedByInt(value.high, value.low, TEN_POW_INT[DECIMAL_BASE_POWER]);
             if (div.remainder != 0) {
                 return false;
             }
             value = of(div.quotientHigh, div.quotientLow);
+            n -= DECIMAL_BASE_POWER;
         }
-        return true;
+        if (n == 0) {
+            return true;
+        }
+        DivisionResult div = divideUnsignedByInt(value.high, value.low, TEN_POW_INT[n]);
+        return div.remainder == 0;
     }
 
     /**
